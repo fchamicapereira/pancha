@@ -23,7 +23,7 @@ static inline bool is_prime(uint64_t n) {
   if (n <= 3)
     return true;
 
-  // Slow but simple
+  // Slow but straw
   for (uint64_t i = 2; i < n; i++) {
     if (n % i == 0) {
       return false;

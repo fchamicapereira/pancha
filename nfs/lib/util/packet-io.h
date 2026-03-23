@@ -1,5 +1,4 @@
-#ifndef _PACKET_IO_H_INCLUDED_
-#define _PACKET_IO_H_INCLUDED_
+#pragma once
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -21,5 +20,3 @@ bool packet_receive(uint16_t src_device, void **p, uint32_t *len);
 void packet_send(void *p, uint16_t dst_device);
 void packet_free(void *p);
 void packet_broadcast(void *p, uint16_t src_device);
-
-#endif // _PACKET_IO_H_INCLUDED_
