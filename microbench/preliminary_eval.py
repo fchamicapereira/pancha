@@ -15,12 +15,27 @@ def plot_preliminary_1flow(exp_name: str):
     out_file = os.path.join(SCRIPT_DIR, f"{exp_name}.{FIG_FORMAT}")
     print(f"Plotting to {out_file}...")
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(10, 6))
 
-    nfs = ['nop', 'batched nop\nstraw', 'batched nop\ngreedy', 'fw', 'batched fw\nstraw', 'batched fw\ngreedy']
-    mpps = [25, 55, 51, 4, 41, 10]
+    nfs = [
+        'nop', 'batched\nnop\nstraw', 'batched\nnop\ngreedy',
+        'fw', 'batched\nfw\nstraw', 'batched\nfw\ngreedy',
+        'telemetry', 'batched\ntelemetry\nstraw', 'batched\ntelemetry\ngreedy'
+    ]
+    mpps = [
+        25, 55, 51,
+        4, 41, 10,
+        2, 35, 12
+    ]
 
-    ax.bar(nfs, mpps)
+    colors = [
+        '#19B2FF', '#19B2FF', '#19B2FF',
+        '#FF7F00', '#FF7F00', '#FF7F00',
+        '#654CFF', '#654CFF', '#654CFF'
+    ]
+
+    bars = ax.bar(nfs, mpps, color=colors)
+    ax.bar_label(bars, padding=3)
 
     ax.set_ylabel('Throughput (Mpps)')
     ax.set_title('Stride processing: 1 flow, 1 core, 0 churn')
@@ -33,12 +48,28 @@ def plot_preliminary_zipfian_internet(exp_name: str):
     out_file = os.path.join(SCRIPT_DIR, f"{exp_name}.{FIG_FORMAT}")
     print(f"Plotting to {out_file}...")
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(10, 6))
 
-    nfs = ['nop', 'batched nop\ngreedy', 'fw', 'batched fw\ngreedy', 'batched fw\nsorted']
-    mpps = [25, 52, 2, 2, 2]
+    nfs = [
+        'nop', 'batched\nnop\ngreedy', 'batched\nnop\nsorted',
+        'fw', 'batched\nfw\ngreedy', 'batched\nfw\nsorted',
+        'telemetry', 'batched\ntelemetry\ngreedy', 'batched\ntelemetry\nsorted',
+    ]
 
-    ax.bar(nfs, mpps)
+    mpps = [
+        25, 52, 49,
+        2, 2, 2,
+        2, 4, 4,
+    ]
+
+    colors = [
+        '#19B2FF', '#19B2FF', '#19B2FF',
+        '#FF7F00', '#FF7F00', '#FF7F00',
+        '#654CFF', '#654CFF', '#654CFF'
+    ]
+
+    bars = ax.bar(nfs, mpps, color=colors)
+    ax.bar_label(bars, padding=3)
 
     ax.set_ylabel('Throughput (Mpps)')
     ax.set_title('Stride processing: s=1.2, 40k flows, 1 core, 0 churn')

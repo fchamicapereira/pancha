@@ -1,15 +1,15 @@
 #include "boilerplate.h"
 
-#include <stdio.h>
-#include <signal.h>
-#include <unistd.h>
-
 #define MAX_FLOWS 65536
 #define EXPIRATION_TIME_NS 1000000000 // 1 seconds
+#define SKETCH_WIDTH 65536
+#define SKETCH_HEIGHT 7
+#define MAX_CLIENTS 65536
+
 #define LAN 0
 #define WAN 1
 
-struct FlowId {
+struct flow {
   uint32_t src_ip;
   uint32_t dst_ip;
   uint16_t src_port;
@@ -18,7 +18,7 @@ struct FlowId {
 
 struct pkt_tag_t {
   uint8_t i;
-  struct FlowId id;
+  struct flow id;
 };
 
 bool pkt_tag_lt(struct pkt_tag_t *a, struct pkt_tag_t *b) {
@@ -50,8 +50,8 @@ void sort_tagged_packets(struct pkt_tag_t *pkts, uint16_t n) {
   }
 }
 
-struct FlowId flow_from_pkt(uint8_t *pkt, uint32_t pkt_len) {
-  struct FlowId id = {0};
+struct flow flow_from_pkt(uint8_t *pkt, uint32_t pkt_len) {
+  struct flow id = {0};
 
   if (pkt_len < sizeof(struct rte_ether_hdr) + sizeof(struct rte_ipv4_hdr) + sizeof(struct tcpudp_hdr)) {
     return id;
@@ -79,12 +79,8 @@ struct FlowId flow_from_pkt(uint8_t *pkt, uint32_t pkt_len) {
   return id;
 }
 
-uint64_t stride_sizes[BATCH_SIZE];
-
 void worker_loop_batched_sorted() {
   NF_INFO("Core %u forwarding packets.", rte_lcore_id());
-
-  memset(stride_sizes, 0, sizeof(stride_sizes));
 
   struct tx_mbuf_batch {
     struct rte_mbuf *batch[BATCH_SIZE];
@@ -134,7 +130,7 @@ void worker_loop_batched_sorted() {
       uint8_t strides[BATCH_SIZE];
       memset(strides, 1, sizeof(strides));
       for (uint16_t n = 0; n < rx_count - 1; n++) {
-        if (memcmp(&tagged_pkts[n].id, &tagged_pkts[n + 1].id, sizeof(struct FlowId)) == 0) {
+        if (memcmp(&tagged_pkts[n].id, &tagged_pkts[n + 1].id, sizeof(struct flow)) == 0) {
           strides[current_batch]++;
         } else {
           current_batch++;
@@ -145,8 +141,6 @@ void worker_loop_batched_sorted() {
 
       current_batch = 0;
       for (uint16_t n = 0; n < rx_count; current_batch++) {
-        stride_sizes[strides[current_batch] - 1]++;
-
         uint8_t i           = tagged_pkts[n].i;
         uint8_t *pkt        = pkts[i];
         uint32_t pkt_len    = pkt_lens[i];
@@ -184,90 +178,68 @@ void worker_loop_batched_sorted() {
   }
 }
 
-void handle_sigint(int sig) {
-  printf("\nCaught signal %d (SIGINT). Cleaning up...\n", sig);
-
-  for (size_t i = 0; i < BATCH_SIZE; i++) {
-    printf("Stride size %zu: %lu packets\n", i + 1, stride_sizes[i]);
-  }
-
-  _exit(0);
-}
-
 int main(int argc, char **argv) {
-  signal(SIGINT, handle_sigint);
-
   nf_setup(argc, argv);
   worker_loop_batched_sorted();
   return 0;
 }
 
 struct State {
-  struct Map *fm;
-  struct Vector *fv;
-  struct DoubleChain *heap;
+  struct CMS *flow_counter_5tuple;
+  struct CMS *flow_counter_ips;
+  struct CMS *flow_counter_ports;
 };
 
 struct State state;
 
+struct flow_5tuple {
+  uint32_t src_ip;
+  uint32_t dst_ip;
+  uint16_t src_port;
+  uint16_t dst_port;
+};
+
+struct flow_ips {
+  uint32_t src_ip;
+  uint32_t dst_ip;
+};
+
+struct flow_ports {
+  uint16_t src_port;
+  uint16_t dst_port;
+};
+
 bool nf_init(void) {
-  if (map_allocate(MAX_FLOWS, sizeof(struct FlowId), &(state.fm)) == 0) {
+  if (cms_allocate(SKETCH_HEIGHT, SKETCH_WIDTH, sizeof(struct flow_5tuple), EXPIRATION_TIME_NS,
+                   &(state.flow_counter_5tuple)) == 0) {
     return false;
   }
 
-  if (vector_allocate(sizeof(struct FlowId), MAX_FLOWS, &(state.fv)) == 0) {
+  if (cms_allocate(SKETCH_HEIGHT, SKETCH_WIDTH, sizeof(struct flow_ips), EXPIRATION_TIME_NS,
+                   &(state.flow_counter_ips)) == 0) {
     return false;
   }
 
-  if (dchain_allocate(MAX_FLOWS, &(state.heap)) == 0) {
+  if (cms_allocate(SKETCH_HEIGHT, SKETCH_WIDTH, sizeof(struct flow_ports), EXPIRATION_TIME_NS,
+                   &(state.flow_counter_ports)) == 0) {
     return false;
   }
 
   return true;
 }
 
-void flow_manager_expire(time_ns_t time) {
-  assert(time >= 0); // we don't support the past
+void expire_entries(time_ns_t now) {
+  assert(now >= 0); // we don't support the past
   assert(sizeof(time_ns_t) <= sizeof(uint64_t));
-  uint64_t time_u     = (uint64_t)time; // OK because of the two asserts
-  time_ns_t last_time = time_u - 1000000000;
-  expire_items_single_map(state.heap, state.fv, state.fm, last_time);
-}
-
-void flow_manager_allocate_or_refresh_flow(struct FlowId *id, time_ns_t time) {
-  int index;
-  if (map_get(state.fm, id, &index)) {
-    NF_DEBUG("Rejuvenated flow");
-    dchain_rejuvenate_index(state.heap, index, time);
-    return;
-  }
-  if (!dchain_allocate_new_index(state.heap, &index, time)) {
-    // No luck, the flow table is full, but we can at least let the
-    // outgoing traffic out.
-    return;
-  }
-
-  NF_DEBUG("Allocating new flow");
-
-  struct FlowId *key = 0;
-  vector_borrow(state.fv, index, (void **)&key);
-  memcpy((void *)key, (void *)id, sizeof(struct FlowId));
-  map_put(state.fm, key, index);
-  vector_return(state.fv, index, key);
-}
-
-bool flow_manager_get_refresh_flow(struct FlowId *id, time_ns_t time) {
-  int index;
-  if (map_get(state.fm, id, &index) == 0) {
-    return false;
-  }
-
-  dchain_rejuvenate_index(state.heap, index, time);
-  return true;
+  uint64_t time_u     = (uint64_t)now; // OK because of the two asserts
+  time_ns_t last_time = time_u - EXPIRATION_TIME_NS;
+  cms_periodic_cleanup(state.flow_counter_5tuple, now);
+  cms_periodic_cleanup(state.flow_counter_ips, now);
+  cms_periodic_cleanup(state.flow_counter_ports, now);
 }
 
 int nf_process(uint16_t device, uint8_t **buffer, uint16_t packet_length, time_ns_t now, struct rte_mbuf *mbuf) {
-  flow_manager_expire(now);
+  // expire_entries(now);
 
   struct rte_ether_hdr *rte_ether_header = nf_then_get_ether_header(buffer);
   struct rte_ipv4_hdr *rte_ipv4_header   = nf_then_get_ipv4_header(rte_ether_header, buffer);
@@ -278,36 +250,34 @@ int nf_process(uint16_t device, uint8_t **buffer, uint16_t packet_length, time_n
 
   struct tcpudp_hdr *tcpudp_header = nf_then_get_tcpudp_header(rte_ipv4_header, buffer);
   if (tcpudp_header == NULL) {
+    NF_DEBUG("Not TCP/UDP, dropping");
     return DROP;
   }
 
+  struct flow_5tuple flow_5tuple = {
+      .src_ip   = rte_ipv4_header->src_addr,
+      .dst_ip   = rte_ipv4_header->dst_addr,
+      .src_port = tcpudp_header->src_port,
+      .dst_port = tcpudp_header->dst_port,
+  };
+
+  struct flow_ips flow_ips = {
+      .src_ip = rte_ipv4_header->src_addr,
+      .dst_ip = rte_ipv4_header->dst_addr,
+  };
+
+  struct flow_ports flow_ports = {
+      .src_port = tcpudp_header->src_port,
+      .dst_port = tcpudp_header->dst_port,
+  };
+
+  cms_increment(state.flow_counter_5tuple, &flow_5tuple);
+  cms_increment(state.flow_counter_ips, &flow_ips);
+  cms_increment(state.flow_counter_ports, &flow_ports);
+
   if (device == LAN) {
-    NF_DEBUG("Seen packet from LAN, allocating/rejuvenating flow and sending to WAN");
-    struct FlowId id = {
-        .src_ip   = rte_ipv4_header->src_addr,
-        .dst_ip   = rte_ipv4_header->dst_addr,
-        .src_port = tcpudp_header->src_port,
-        .dst_port = tcpudp_header->dst_port,
-    };
-
-    flow_manager_allocate_or_refresh_flow(&id, now);
-
     return WAN;
   } else {
-    NF_DEBUG("Seen packet from WAN, checking if flow is known and sending to LAN if so");
-    // Inverse the src and dst for the "reply flow"
-    struct FlowId id = {
-        .src_ip   = rte_ipv4_header->dst_addr,
-        .dst_ip   = rte_ipv4_header->src_addr,
-        .src_port = tcpudp_header->dst_port,
-        .dst_port = tcpudp_header->src_port,
-    };
-
-    if (!flow_manager_get_refresh_flow(&id, now)) {
-      NF_DEBUG("Unknown external flow, dropping");
-      return DROP;
-    }
-
     return LAN;
   }
 }
