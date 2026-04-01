@@ -28,10 +28,8 @@ struct tb_bucket {
   time_ns_t time;
 };
 
-int tb_allocate(uint32_t capacity, uint64_t rate, uint64_t burst,
-                uint32_t key_size, struct TokenBucket **tb_out) {
-  struct TokenBucket *tb_alloc =
-      (struct TokenBucket *)malloc(sizeof(struct TokenBucket));
+int tb_allocate(uint32_t capacity, uint64_t rate, uint64_t burst, uint32_t key_size, struct TokenBucket **tb_out) {
+  struct TokenBucket *tb_alloc = (struct TokenBucket *)malloc(sizeof(struct TokenBucket));
   if (tb_alloc == NULL) {
     return 0;
   }
@@ -54,8 +52,7 @@ int tb_allocate(uint32_t capacity, uint64_t rate, uint64_t burst,
   }
 
   (*tb_out)->buckets = NULL;
-  if (vector_allocate(sizeof(struct tb_bucket), capacity,
-                      &((*tb_out)->buckets)) == 0) {
+  if (vector_allocate(sizeof(struct tb_bucket), capacity, &((*tb_out)->buckets)) == 0) {
     return 0;
   }
 
@@ -67,12 +64,9 @@ int tb_allocate(uint32_t capacity, uint64_t rate, uint64_t burst,
   return 1;
 }
 
-int tb_is_tracing(struct TokenBucket *tb, void *k, int *index_out) {
-  return map_get(tb->flows, k, index_out);
-}
+int tb_is_tracing(struct TokenBucket *tb, void *k, int *index_out) { return map_get(tb->flows, k, index_out); }
 
-int tb_trace(struct TokenBucket *tb, void *k, uint16_t pkt_len, time_ns_t time,
-             int *index_out) {
+int tb_trace(struct TokenBucket *tb, void *k, uint32_t pkt_len, time_ns_t time, int *index_out) {
   int allocated = dchain_allocate_new_index(tb->allocator, index_out, time);
 
   if (!allocated) {
@@ -97,8 +91,7 @@ int tb_trace(struct TokenBucket *tb, void *k, uint16_t pkt_len, time_ns_t time,
   return 1;
 }
 
-int tb_update_and_check(struct TokenBucket *tb, int index, uint16_t pkt_len,
-                        time_ns_t time) {
+int tb_update_and_check(struct TokenBucket *tb, int index, uint32_t pkt_len, time_ns_t time) {
   dchain_rejuvenate_index(tb->allocator, index, time);
 
   struct tb_bucket *bucket = 0;

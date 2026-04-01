@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import random
 import os
 import statistics
 
-SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
-FIG_FORMAT = "pdf"
-# FIG_FORMAT = "png"
+SCRIPT_DIR = Path(__file__).parent.absolute()
+OUT_DIR = SCRIPT_DIR / "out"
+
+# FIG_FORMAT = "pdf"
+FIG_FORMAT = "png"
 
 SAMPLE_SIZE = 1_000_000
 # SAMPLE_SIZE = 10_000
@@ -198,13 +201,15 @@ def plot_expected_speedups(experiments: dict[float, ElephantsAndMice], title: st
     ax.set_ylim(0, max(cummulative_speedups) + 1)
 
     plt.tight_layout()
-    plt.savefig(os.path.join(SCRIPT_DIR, out_file), dpi=300)
+    plt.savefig(out_file, dpi=300)
     plt.close()
 
 
 if __name__ == "__main__":
-    hist_out_file = os.path.join(SCRIPT_DIR, f"uniform_vs_zipfian_hist.{FIG_FORMAT}")
-    cdf_out_file = os.path.join(SCRIPT_DIR, f"uniform_vs_zipfian_cdf.{FIG_FORMAT}")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    hist_out_file = OUT_DIR / f"uniform_vs_zipfian_hist.{FIG_FORMAT}"
+    cdf_out_file = OUT_DIR / f"uniform_vs_zipfian_cdf.{FIG_FORMAT}"
 
     experiments = {s: zipf_distribution(s, 0, FLOWS - 1, SAMPLE_SIZE) for s in ZIPF_PARAMS}
 
@@ -218,7 +223,7 @@ if __name__ == "__main__":
         f"Optimistic Speedups for Mice (x{MAX_MICE_SPEEDUP}) and Elephants (x{MAX_ELEPHANT_SPEEDUP})",
         MAX_MICE_SPEEDUP,
         MAX_ELEPHANT_SPEEDUP,
-        f"optimistic_speedups.{FIG_FORMAT}",
+        OUT_DIR / f"optimistic_speedups.{FIG_FORMAT}",
     )
 
     plot_expected_speedups(
@@ -226,5 +231,5 @@ if __name__ == "__main__":
         f"Conservative Speedups for Mice (x{CONSERVATIVE_MICE_SPEEDUP}) and Elephants (x{CONSERVATIVE_ELEPHANT_SPEEDUP})",
         CONSERVATIVE_MICE_SPEEDUP,
         CONSERVATIVE_ELEPHANT_SPEEDUP,
-        f"conservative_speedups.{FIG_FORMAT}",
+        OUT_DIR / f"conservative_speedups.{FIG_FORMAT}",
     )

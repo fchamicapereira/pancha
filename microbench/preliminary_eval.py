@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import random
 import os
 import statistics
 
-SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
+SCRIPT_DIR = Path(__file__).parent.absolute()
+OUT_DIR = SCRIPT_DIR / "out"
+
 # FIG_FORMAT = "pdf"
 FIG_FORMAT = "png"
 
 def plot_preliminary_1flow(exp_name: str):
-    out_file = os.path.join(SCRIPT_DIR, f"{exp_name}.{FIG_FORMAT}")
+    out_file = OUT_DIR / f"{exp_name}.{FIG_FORMAT}"
     print(f"Plotting to {out_file}...")
 
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -23,9 +26,9 @@ def plot_preliminary_1flow(exp_name: str):
         'telemetry', 'batched\ntelemetry\nstraw', 'batched\ntelemetry\ngreedy'
     ]
     mpps = [
-        25, 55, 51,
-        4, 41, 10,
-        2, 35, 12
+        29, 33, 33,
+        13, 33, 33,
+        4, 33, 33
     ]
 
     colors = [
@@ -44,8 +47,9 @@ def plot_preliminary_1flow(exp_name: str):
     plt.savefig(out_file, dpi=300)
     plt.close()
 
-def plot_preliminary_zipfian_internet(exp_name: str):
-    out_file = os.path.join(SCRIPT_DIR, f"{exp_name}.{FIG_FORMAT}")
+# s = 1.5, 40k flows, 1 core, 0 churn
+def plot_preliminary_zipfian(exp_name: str):
+    out_file = OUT_DIR / f"{exp_name}.{FIG_FORMAT}"
     print(f"Plotting to {out_file}...")
 
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -57,9 +61,9 @@ def plot_preliminary_zipfian_internet(exp_name: str):
     ]
 
     mpps = [
-        25, 52, 49,
-        2, 2, 2,
-        2, 4, 4,
+        27, 33, 33,
+        10, 15, 13,
+        4, 5, 7,
     ]
 
     colors = [
@@ -72,13 +76,14 @@ def plot_preliminary_zipfian_internet(exp_name: str):
     ax.bar_label(bars, padding=3)
 
     ax.set_ylabel('Throughput (Mpps)')
-    ax.set_title('Stride processing: s=1.2, 40k flows, 1 core, 0 churn')
+    ax.set_title('Stride processing: s=1.5, 40k flows, 1 core, 0 churn')
 
     plt.tight_layout()
     plt.savefig(out_file, dpi=300)
     plt.close()
 
-def plot_fw_zipfian_internet_greedy_stride_sizes(exp_name: str):
+# s = 1.5, 40k flows, 1 core, 0 churn
+def plot_fw_zipfian_greedy_stride_sizes(exp_name: str):
     stride_sizes = [
         167019991,
         6935419,
@@ -114,7 +119,7 @@ def plot_fw_zipfian_internet_greedy_stride_sizes(exp_name: str):
         0,
     ]
 
-    out_file = os.path.join(SCRIPT_DIR, f"{exp_name}.{FIG_FORMAT}")
+    out_file = OUT_DIR / f"{exp_name}.{FIG_FORMAT}"
     print(f"Plotting to {out_file}...")
 
     fig, ax = plt.subplots()
@@ -128,13 +133,14 @@ def plot_fw_zipfian_internet_greedy_stride_sizes(exp_name: str):
     ax.set_ylim(0, 100)
 
     ax.set_ylabel('Relative Size (%)')
-    ax.set_title('FW greedy stride sizes: s=1.2, 40k flows, 1 core, 0 churn')
+    ax.set_title('FW greedy stride sizes: s=1.5, 40k flows, 1 core, 0 churn')
 
     plt.tight_layout()
     plt.savefig(out_file, dpi=300)
     plt.close()
 
-def plot_fw_zipfian_internet_sorted_stride_sizes(exp_name: str):
+# s = 1.5, 40k flows, 1 core, 0 churn
+def plot_fw_zipfian_sorted_stride_sizes(exp_name: str):
     stride_sizes = [
         109440146,
         10522647,
@@ -170,7 +176,7 @@ def plot_fw_zipfian_internet_sorted_stride_sizes(exp_name: str):
         0,
     ]
 
-    out_file = os.path.join(SCRIPT_DIR, f"{exp_name}.{FIG_FORMAT}")
+    out_file = OUT_DIR / f"{exp_name}.{FIG_FORMAT}"
     print(f"Plotting to {out_file}...")
 
     fig, ax = plt.subplots()
@@ -191,9 +197,11 @@ def plot_fw_zipfian_internet_sorted_stride_sizes(exp_name: str):
     plt.close()
 
 if __name__ == "__main__":
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+
     plot_preliminary_1flow("uniform_1_flow")
-    plot_preliminary_zipfian_internet("zipfian_internet_40k_flows")
-    plot_fw_zipfian_internet_greedy_stride_sizes("fw_greedy_stride_sizes")
-    plot_fw_zipfian_internet_sorted_stride_sizes("fw_sorted_stride_sizes")
+    plot_preliminary_zipfian("zipfian_40k_flows")
+    plot_fw_zipfian_greedy_stride_sizes("fw_greedy_stride_sizes")
+    plot_fw_zipfian_sorted_stride_sizes("fw_sorted_stride_sizes")
 
 

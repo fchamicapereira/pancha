@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import random
@@ -8,16 +9,19 @@ import os
 import statistics
 import math
 
-SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
+SCRIPT_DIR = Path(__file__).parent.absolute()
+OUT_DIR = SCRIPT_DIR / "out"
+
 # FIG_FORMAT = "pdf"
 FIG_FORMAT = "png"
 
 SAMPLE_SIZE = 100_000
 FLOWS = 80_000
+ELEPHANT_THRESHOLD_BY_TRAFFIC_PORTION = 0.8
 
 EPSILON = 1e-6
 ZIPF_PARAMS = [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0]
-# ZIPF_PARAMS = [0.0, 1.2]
+# ZIPF_PARAMS = [3, 4]
 
 UNIV2_DATA = {
     "stride_sizes_per_batch": {
@@ -961,6 +965,9 @@ EQUINIX_NYC_DATA = {
   }
 }
 
+# Change plot font size
+plt.rcParams.update({'font.size': 17})
+
 def uniform_distribution(start: int = 0, end: int = FLOWS - 1, sample_size: int = SAMPLE_SIZE) -> list[int]:
     flows = []
     for i in range(sample_size):
@@ -1027,13 +1034,14 @@ def get_stride_sizes_from_flows(flows: list[int], sort: bool = False) -> list[in
     return stride_sizes
 
 def plot_hist_strides(strides_per_experiment: dict[str, list[int]], exp_name: str):
-    out_file = f"{exp_name}.{FIG_FORMAT}"
+    out_file = OUT_DIR / f"{exp_name}.{FIG_FORMAT}"
     print(f"Plotting {len(strides_per_experiment)} histograms to {out_file}...")
 
     # Let's try to make a grid of subplots, as wide as high as possible
     nx = math.ceil(math.sqrt(len(strides_per_experiment)))
 
     fig, axs = plt.subplots(nx, nx, figsize=(12 * nx, 6 * nx), squeeze=False)
+
 
     for ax, (name, stride_sizes) in zip(axs.flatten(), strides_per_experiment.items()):
         total_strides_count = sum(stride_sizes)
@@ -1062,13 +1070,36 @@ def plot_hist_strides(strides_per_experiment: dict[str, list[int]], exp_name: st
     plt.savefig(out_file, dpi=500)
     plt.close()
 
-if __name__ == "__main__":
-    # experiments = {f"s={s:.1f}": zipf_distribution(s, 0, FLOWS - 1, SAMPLE_SIZE) for s in ZIPF_PARAMS}
-    # stride_sizes_unsorted = { f"{exp_name} (unsorted)": get_stride_sizes_from_flows(flows, sort=False) for exp_name, flows in experiments.items() }
-    # stride_sizes_sorted = { f"{exp_name} (sorted)": get_stride_sizes_from_flows(flows, sort=True) for exp_name, flows in experiments.items() }
+def filter_by_elephants(flows: list[int], threshold_traffic_portion: float) -> tuple[set[int], list[int]]:
+    flow_counts = {}
+    for flow in flows:
+        if flow not in flow_counts:
+            flow_counts[flow] = 0
+        flow_counts[flow] += 1
+    flows_set = set(flows)
+    sorted_flows = sorted(list(flows_set), key=lambda f: flow_counts[f], reverse=True)
+    elephants = set()
+    
+    for flow in sorted_flows:
+        if sum([ flow_counts[e] for e in elephants ]) < threshold_traffic_portion * len(flows):
+            elephants.add(flow)
+        else:
+            break
+        print(f"Filtering elephants ({int(100 * len(elephants) / len(flows_set)):3}%)", end="\r")
+    
+    print(f"Found {len(elephants)} elephants that account for {100.0 * sum([ flow_counts[e] for e in elephants ]) / len(flows):.2f}% of the traffic")
 
-    # plot_hist_strides(stride_sizes_unsorted, "stride_sizes_unsorted")
-    # plot_hist_strides(stride_sizes_sorted, "stride_sizes_sorted")
+    return elephants, [ f for f in flows if f in elephants ]
+
+if __name__ == "__main__":
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    experiments = {f"s={s:.1f}": zipf_distribution(s, 0, FLOWS - 1, SAMPLE_SIZE) for s in ZIPF_PARAMS}
+    stride_sizes_unsorted = { f"{exp_name} (unsorted)": get_stride_sizes_from_flows(flows, sort=False) for exp_name, flows in experiments.items() }
+    stride_sizes_sorted = { f"{exp_name} (sorted)": get_stride_sizes_from_flows(flows, sort=True) for exp_name, flows in experiments.items() }
+
+    plot_hist_strides(stride_sizes_unsorted, "stride_sizes_unsorted")
+    plot_hist_strides(stride_sizes_sorted, "stride_sizes_sorted")
 
     univ2_stride_sizes_unsorted = { f"univ2 batch size {batch_size} (unsorted)": UNIV2_DATA["stride_sizes_per_batch"][batch_size]["unsorted"] for batch_size in UNIV2_DATA["stride_sizes_per_batch"] }
     univ2_stride_sizes_sorted = { f"univ2 batch size {batch_size} (sorted)": UNIV2_DATA["stride_sizes_per_batch"][batch_size]["sorted"] for batch_size in UNIV2_DATA["stride_sizes_per_batch"] }
@@ -1081,3 +1112,17 @@ if __name__ == "__main__":
 
     plot_hist_strides(equinix_nyc_stride_sizes_unsorted, "equinix_nyc_stride_sizes_unsorted")
     plot_hist_strides(equinix_nyc_stride_sizes_sorted, "equinix_nyc_stride_sizes_sorted")
+
+    # experiments = {}
+    # for s in ZIPF_PARAMS:
+    #     flows = zipf_distribution(s, 0, FLOWS - 1, SAMPLE_SIZE)
+    #     elephants, elephant_flows = filter_by_elephants(flows, ELEPHANT_THRESHOLD_BY_TRAFFIC_PORTION)
+    #     experiments[f"s={s:.1f} #elephants={len(elephants)} threshold={ELEPHANT_THRESHOLD_BY_TRAFFIC_PORTION:3.0f}%"] = elephant_flows
+    
+    # stride_sizes_unsorted = { f"{exp_name} (unsorted)": get_stride_sizes_from_flows(flows, sort=False) for exp_name, flows in experiments.items() }
+    # stride_sizes_sorted = { f"{exp_name} (sorted)": get_stride_sizes_from_flows(flows, sort=True) for exp_name, flows in experiments.items() }
+
+    # plot_hist_strides(stride_sizes_unsorted, "stride_sizes_unsorted_elephants_only")
+    # plot_hist_strides(stride_sizes_sorted, "stride_sizes_sorted_elephants_only")
+
+

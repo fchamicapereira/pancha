@@ -1,4 +1,4 @@
-#include "loop.h"
+#include "loop_batch_straw.h"
 
 #define MAX_FLOWS 65536
 #define EXPIRATION_TIME_NS 1000000000 // 1 seconds
@@ -60,17 +60,13 @@ bool nf_init(void) {
 }
 
 void expire_entries(time_ns_t now) {
-  assert(now >= 0); // we don't support the past
-  assert(sizeof(time_ns_t) <= sizeof(uint64_t));
-  uint64_t time_u     = (uint64_t)now; // OK because of the two asserts
-  time_ns_t last_time = time_u - EXPIRATION_TIME_NS;
   cms_periodic_cleanup(state.flow_counter_5tuple, now);
   cms_periodic_cleanup(state.flow_counter_ips, now);
   cms_periodic_cleanup(state.flow_counter_ports, now);
 }
 
 int nf_process(uint16_t device, uint8_t *pkt, uint32_t pkt_len, time_ns_t now) {
-  // expire_entries(now);
+  expire_entries(now);
 
   struct tcpudp_hdrs_t hdrs = nf_get_tcpudp_hdrs(pkt, pkt_len);
 
