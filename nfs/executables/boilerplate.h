@@ -26,6 +26,8 @@
 #define DROP ((uint16_t)-1)
 #define FLOOD ((uint16_t)-2)
 
+static const uint32_t MBUF_CACHE_SIZE = 256;
+
 static const uint16_t RX_QUEUE_SIZE = 1024;
 static const uint16_t TX_QUEUE_SIZE = 1024;
 

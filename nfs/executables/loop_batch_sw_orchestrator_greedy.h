@@ -9,7 +9,9 @@
 #define RING_SIZE 16384 /* Must be a power of 2 */
 #define POOL_CACHE_SIZE 256
 
-#define ORCHESTRATOR_RELATIVE_TRAFFIC_THRESHOLD 0.02
+// #define ORCHESTRATOR_RELATIVE_TRAFFIC_THRESHOLD 0.001
+// #define ORCHESTRATOR_RELATIVE_TRAFFIC_THRESHOLD 0.01
+#define ORCHESTRATOR_RELATIVE_TRAFFIC_THRESHOLD 0.1
 #define ORCHESTRATOR_FLOWS_EXPIRATION_TIME_NS 10000000000ll // 10 seconds
 #define ORCHESTRATOR_MAX_FLOWS 65536
 #define ORCHESTRATOR_TELEMETRY_PHASE_PACKETS 10000000ll
@@ -35,68 +37,33 @@ struct flow_t {
   uint16_t dst_port;
 };
 
-struct pkt_tag_t {
-  uint8_t i;
-  struct flow_t id;
-};
-
-struct pkt_tag_t build_pkt_tag(uint8_t *pkt, uint32_t pkt_len, uint16_t i) {
-  struct pkt_tag_t tag;
-  tag.i = i;
+struct flow_t flow_from_pkt(uint8_t *pkt, uint32_t pkt_len) {
+  struct flow_t id = {0};
 
   if (pkt_len < sizeof(struct rte_ether_hdr) + sizeof(struct rte_ipv4_hdr) + sizeof(struct tcpudp_hdr)) {
-    return tag;
+    return id;
   }
 
   struct rte_ether_hdr *ether_hdr = (struct rte_ether_hdr *)pkt;
 
   if (ether_hdr->ether_type != rte_be_to_cpu_16(RTE_ETHER_TYPE_IPV4)) {
-    return tag;
+    return id;
   }
 
   struct rte_ipv4_hdr *ipv4_hdr = (struct rte_ipv4_hdr *)(ether_hdr + 1);
 
   if (ipv4_hdr->next_proto_id != IPPROTO_TCP && ipv4_hdr->next_proto_id != IPPROTO_UDP) {
-    return tag;
+    return id;
   }
 
   struct tcpudp_hdr *tcpudp_hdr = (struct tcpudp_hdr *)(ipv4_hdr + 1);
 
-  tag.id.src_ip   = ipv4_hdr->src_addr;
-  tag.id.dst_ip   = ipv4_hdr->dst_addr;
-  tag.id.src_port = tcpudp_hdr->src_port;
-  tag.id.dst_port = tcpudp_hdr->dst_port;
+  id.src_ip   = ipv4_hdr->src_addr;
+  id.dst_ip   = ipv4_hdr->dst_addr;
+  id.src_port = tcpudp_hdr->src_port;
+  id.dst_port = tcpudp_hdr->dst_port;
 
-  return tag;
-}
-
-bool pkt_tag_lt(struct pkt_tag_t *a, struct pkt_tag_t *b) {
-  if (a->id.src_ip != b->id.src_ip) {
-    return a->id.src_ip < b->id.src_ip;
-  }
-
-  if (a->id.dst_ip != b->id.dst_ip) {
-    return a->id.dst_ip < b->id.dst_ip;
-  }
-
-  if (a->id.src_port != b->id.src_port) {
-    return a->id.src_port < b->id.src_port;
-  }
-
-  return a->id.dst_port < b->id.dst_port;
-}
-
-void sort_tagged_packets(struct pkt_tag_t *pkts, uint16_t n) {
-  for (int i = 1; i < n; i++) {
-    struct pkt_tag_t curr = pkts[i];
-    int j                 = i - 1;
-
-    while (j >= 0 && pkt_tag_lt(pkts + j, &curr)) {
-      memcpy(pkts + j + 1, pkts + j, sizeof(struct pkt_tag_t));
-      j = j - 1;
-    }
-    memcpy(pkts + j + 1, &curr, sizeof(struct pkt_tag_t));
-  }
+  return id;
 }
 
 struct rte_flow *generate_elephant_rule(uint16_t port_id, struct flow_t *id, uint16_t rx_q) {
@@ -179,8 +146,6 @@ void orchestrator_loop() {
       continue;
     }
 
-    printf("Received %u packets for counting. Total so far: %lu\n", n, total_packets);
-
     for (unsigned int i = 0; i < n; i++) {
       struct flow_t *id = (struct flow_t *)dequeued_ptrs[i];
       cms_increment(flow_counter, id);
@@ -261,26 +226,18 @@ void mice_worker_loop() {
     for (uint16_t device = 0; device < devices_count; device++) {
       struct rte_mbuf *mbufs[BATCH_SIZE];
 
-      uint16_t rx_count = rte_eth_rx_burst(device, 0, mbufs + rx_count, BATCH_SIZE);
-
-      uint8_t *pkts[BATCH_SIZE];
-      uint32_t pkt_lens[BATCH_SIZE];
-      struct pkt_tag_t tagged_pkts[BATCH_SIZE];
-
-      for (uint16_t n = 0; n < rx_count; n++) {
-        pkts[n]        = rte_pktmbuf_mtod(mbufs[n], uint8_t *);
-        pkt_lens[n]    = mbufs[n]->pkt_len;
-        tagged_pkts[n] = build_pkt_tag(pkts[n], pkt_lens[n], n);
-      }
+      uint16_t rx_count = rte_eth_rx_burst(device, queue_id, mbufs + rx_count, BATCH_SIZE);
+      // printf("Received batch of %u packets on Mice queue!\n", rx_count);
 
       for (uint16_t n = 0; n < rx_count; n++) {
         uint16_t src_device = mbufs[n]->port;
-        uint8_t *pkt        = pkts[n];
-        uint32_t pkt_len    = pkt_lens[n];
+        uint8_t *pkt        = rte_pktmbuf_mtod(mbufs[n], uint8_t *);
+        uint32_t pkt_len    = mbufs[n]->pkt_len;
+        struct flow_t id    = flow_from_pkt(pkt, pkt_len);
 
         struct flow_t *id_entry;
         if (rte_mempool_get(flow_id_pool, (void **)&id_entry) == 0) {
-          *id_entry = tagged_pkts[n].id;
+          *id_entry = id;
           if (rte_ring_enqueue(flow_feedback_ring, id_entry) < 0) {
             rte_mempool_put(flow_id_pool, id_entry);
           }
@@ -296,16 +253,16 @@ void mice_worker_loop() {
           tx_batch_per_port[dst_device].batch[tx_count] = mbufs[n];
           tx_batch_per_port[dst_device].tx_count++;
         }
-      }
 
-      for (uint16_t dst_device = 0; dst_device < devices_count; dst_device++) {
-        uint16_t sent_count = rte_eth_tx_burst(dst_device, queue_id, tx_batch_per_port[dst_device].batch,
-                                               tx_batch_per_port[dst_device].tx_count);
-        for (uint16_t n = sent_count; n < tx_batch_per_port[dst_device].tx_count; n++) {
-          rte_pktmbuf_free(mbufs[n]); // should not happen, but we're in
-                                      // the unverified case anyway
+        for (uint16_t dst_device = 0; dst_device < devices_count; dst_device++) {
+          uint16_t sent_count = rte_eth_tx_burst(dst_device, queue_id, tx_batch_per_port[dst_device].batch,
+                                                 tx_batch_per_port[dst_device].tx_count);
+          for (uint16_t n = sent_count; n < tx_batch_per_port[dst_device].tx_count; n++) {
+            rte_pktmbuf_free(mbufs[n]); // should not happen, but we're in
+                                        // the unverified case anyway
+          }
+          tx_batch_per_port[dst_device].tx_count = 0;
         }
-        tx_batch_per_port[dst_device].tx_count = 0;
       }
     }
   }
@@ -351,19 +308,8 @@ void elephant_worker_loop() {
         continue;
       }
 
-      // NF_INFO("Received batch of %u packets on Elephant queue!", rx_count);
-
       uint8_t *pkts[BATCH_SIZE];
       uint32_t pkt_lens[BATCH_SIZE];
-      struct pkt_tag_t tagged_pkts[BATCH_SIZE];
-
-      for (uint16_t n = 0; n < rx_count; n++) {
-        pkts[n]        = rte_pktmbuf_mtod(mbufs[n], uint8_t *);
-        pkt_lens[n]    = mbufs[n]->pkt_len;
-        tagged_pkts[n] = build_pkt_tag(pkts[n], pkt_lens[n], n);
-      }
-
-      sort_tagged_packets(tagged_pkts, rx_count);
 
       uint8_t current_batch = 0;
 
@@ -372,8 +318,15 @@ void elephant_worker_loop() {
         strides[i] = 1;
       }
 
+      struct flow_t flows[BATCH_SIZE];
+      for (uint16_t n = 0; n < rx_count; n++) {
+        pkts[n]     = rte_pktmbuf_mtod(mbufs[n], uint8_t *);
+        pkt_lens[n] = mbufs[n]->pkt_len;
+        flows[n]    = flow_from_pkt(pkts[n], pkt_lens[n]);
+      }
+
       for (uint16_t n = 0; n < rx_count - 1; n++) {
-        if (memcmp(&tagged_pkts[n].id, &tagged_pkts[n + 1].id, sizeof(struct flow_t)) == 0) {
+        if (memcmp(&flows[n], &flows[n + 1], sizeof(struct flow_t)) == 0) {
           strides[current_batch]++;
         } else {
           current_batch++;
@@ -388,30 +341,19 @@ void elephant_worker_loop() {
         stride_sizes[strides[current_batch] - 1]++;
 #endif
 
-        uint8_t i           = tagged_pkts[n].i;
-        uint8_t *pkt        = pkts[i];
-        uint32_t pkt_len    = pkt_lens[i];
-        uint16_t src_device = mbufs[i]->port;
-
-        struct flow_t *id_entry;
-
-        if (rte_mempool_get(flow_id_pool, (void **)&id_entry) == 0) {
-          *id_entry = tagged_pkts[n].id;
-          if (rte_ring_enqueue(flow_feedback_ring, id_entry) < 0) {
-            rte_mempool_put(flow_id_pool, id_entry);
-          }
-        }
-
+        uint16_t src_device = mbufs[n]->port;
+        uint8_t *pkt        = pkts[n];
+        uint32_t pkt_len    = pkt_lens[n];
         uint16_t dst_device = nf_process(src_device, pkt, pkt_len, now);
 
         if (dst_device == DROP) {
-          for (uint8_t stride_size = 0; stride_size < strides[current_batch]; stride_size++) {
-            rte_pktmbuf_free(mbufs[tagged_pkts[n + stride_size].i]);
+          for (uint8_t i = 0; i < strides[current_batch]; i++) {
+            rte_pktmbuf_free(mbufs[n + i]);
           }
         } else {
-          for (uint8_t stride_size = 0; stride_size < strides[current_batch]; stride_size++) {
+          for (uint8_t i = 0; i < strides[current_batch]; i++) {
             uint16_t tx_count                             = tx_batch_per_port[dst_device].tx_count;
-            tx_batch_per_port[dst_device].batch[tx_count] = mbufs[tagged_pkts[n + stride_size].i];
+            tx_batch_per_port[dst_device].batch[tx_count] = mbufs[n + i];
             tx_batch_per_port[dst_device].tx_count++;
           }
         }
@@ -423,7 +365,7 @@ void elephant_worker_loop() {
         uint16_t sent_count = rte_eth_tx_burst(dst_device, queue_id, tx_batch_per_port[dst_device].batch,
                                                tx_batch_per_port[dst_device].tx_count);
         for (uint16_t n = sent_count; n < tx_batch_per_port[dst_device].tx_count; n++) {
-          rte_pktmbuf_free(mbufs[tagged_pkts[n].i]);
+          rte_pktmbuf_free(mbufs[n]);
         }
         tx_batch_per_port[dst_device].tx_count = 0;
       }
@@ -442,9 +384,6 @@ int nf_setup(int argc, char **argv) {
 
   unsigned nb_devices = rte_eth_dev_count_avail();
 
-  // cache size (per-core, not useful in a single-threaded app)
-  unsigned cache_size = 0;
-
   // application private area size
   uint16_t priv_size      = 0;
   uint16_t data_room_size = RTE_MBUF_DEFAULT_BUF_SIZE;
@@ -459,7 +398,7 @@ int nf_setup(int argc, char **argv) {
   uint16_t generic_queues_start = 1;
   uint16_t nb_generic_workers   = nb_workers - 1;
 
-  struct rte_mempool *mbuf_pool = rte_pktmbuf_pool_create("MEMPOOL", MEMPOOL_BUFFER_COUNT * nb_devices, cache_size,
+  struct rte_mempool *mbuf_pool = rte_pktmbuf_pool_create("MEMPOOL", MEMPOOL_BUFFER_COUNT * nb_devices, MBUF_CACHE_SIZE,
                                                           priv_size, data_room_size, rte_socket_id());
   if (mbuf_pool == NULL) {
     rte_exit(EXIT_FAILURE, "Cannot create pool: %s\n", rte_strerror(rte_errno));

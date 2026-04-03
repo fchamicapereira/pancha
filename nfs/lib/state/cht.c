@@ -1,6 +1,9 @@
 #include "cht.h"
+
 #include <assert.h>
 #include <stdlib.h>
+
+#include <rte_malloc.h>
 
 static uint64_t loop(uint64_t k, uint64_t capacity) {
   uint64_t g = k % capacity;
@@ -9,7 +12,7 @@ static uint64_t loop(uint64_t k, uint64_t capacity) {
 
 int cht_fill_cht(struct Vector *cht, uint32_t cht_height, uint32_t backend_capacity) {
   // Generate the permutations of 0..(cht_height - 1) for each backend
-  int *permutations = (int *)malloc(sizeof(int) * (int)(cht_height * backend_capacity));
+  int *permutations = (int *)rte_malloc("permutations", sizeof(int) * (int)(cht_height * backend_capacity), 64);
   if (permutations == 0) {
     return 0;
   }
@@ -26,9 +29,9 @@ int cht_fill_cht(struct Vector *cht, uint32_t cht_height, uint32_t backend_capac
     }
   }
 
-  int *next = (int *)malloc(sizeof(int) * (int)(cht_height));
+  int *next = (int *)rte_malloc("next", sizeof(int) * (int)(cht_height), 64);
   if (next == 0) {
-    free(permutations);
+    rte_free(permutations);
     return 0;
   }
 
@@ -56,13 +59,13 @@ int cht_fill_cht(struct Vector *cht, uint32_t cht_height, uint32_t backend_capac
   }
 
   // Free memory
-  free(next);
-  free(permutations);
+  rte_free(next);
+  rte_free(permutations);
   return 1;
 }
 
-int cht_find_preferred_available_backend(uint64_t hash, struct Vector *cht, struct DoubleChain *active_backends, uint32_t cht_height,
-                                         uint32_t backend_capacity, int *chosen_backend) {
+int cht_find_preferred_available_backend(uint64_t hash, struct Vector *cht, struct DoubleChain *active_backends,
+                                         uint32_t cht_height, uint32_t backend_capacity, int *chosen_backend) {
   uint64_t start = loop(hash, cht_height);
 
   for (uint32_t i = 0; i < backend_capacity; ++i) {

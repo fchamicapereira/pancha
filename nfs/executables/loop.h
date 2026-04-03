@@ -54,15 +54,12 @@ int nf_setup(int argc, char **argv) {
 
   unsigned nb_devices = rte_eth_dev_count_avail();
 
-  // cache size (per-core, not useful in a single-threaded app)
-  unsigned cache_size = 0;
-
   // application private area size
   uint16_t priv_size = 0;
 
   uint16_t data_room_size = RTE_MBUF_DEFAULT_BUF_SIZE;
 
-  struct rte_mempool *mbuf_pool = rte_pktmbuf_pool_create("MEMPOOL", MEMPOOL_BUFFER_COUNT * nb_devices, cache_size,
+  struct rte_mempool *mbuf_pool = rte_pktmbuf_pool_create("MEMPOOL", MEMPOOL_BUFFER_COUNT * nb_devices, MBUF_CACHE_SIZE,
                                                           priv_size, data_room_size, rte_socket_id());
   if (mbuf_pool == NULL) {
     rte_exit(EXIT_FAILURE, "Cannot create pool: %s\n", rte_strerror(rte_errno));

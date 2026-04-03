@@ -1,49 +1,27 @@
-#include "../lib/libvig.h"
+#pragma once
 
-#include <rte_ether.h>
-#include <rte_ip.h>
-#include <rte_udp.h>
+#include "boilerplate.h"
 
-#include <rte_cycles.h>
-#include <rte_eal.h>
-#include <rte_ethdev.h>
-#include <rte_lcore.h>
-#include <rte_malloc.h>
-#include <rte_mbuf.h>
-#include <rte_random.h>
-#include <rte_hash_crc.h>
-
-#include <rte_flow.h>
-#include <rte_ring.h>
-
-#include <stdio.h>
-#include <signal.h>
-#include <unistd.h>
-
-#define BATCH_SIZE 32
-
-#define DROP ((uint16_t)-1)
-#define FLOOD ((uint16_t)-2)
-
-static const uint16_t RX_QUEUE_SIZE = 1024;
-static const uint16_t TX_QUEUE_SIZE = 1024;
-
-// Buffer count for mempools
-static const unsigned MEMPOOL_BUFFER_COUNT = 32768;
-
-bool nf_init(void);
-int nf_process(uint16_t device, uint8_t *pkt, uint32_t pkt_len, time_ns_t now);
+#ifndef TRACK_STRIDE_SIZES
+#define TRACK_STRIDE_SIZES 0
+#endif
 
 #define RING_SIZE 16384 /* Must be a power of 2 */
 #define POOL_CACHE_SIZE 256
 
-#define MAX_FLOWS 65536
-#define EXPIRATION_TIME_NS 1000000000ll // 1 seconds
-#define LAN 0
-#define WAN 1
+#define ORCHESTRATOR_RELATIVE_TRAFFIC_THRESHOLD 0.001
+// #define ORCHESTRATOR_RELATIVE_TRAFFIC_THRESHOLD 0.01
+// #define ORCHESTRATOR_RELATIVE_TRAFFIC_THRESHOLD 0.1
+#define ORCHESTRATOR_FLOWS_EXPIRATION_TIME_NS 10000000000ll // 10 seconds
+#define ORCHESTRATOR_MAX_FLOWS 65536
+#define ORCHESTRATOR_TELEMETRY_PHASE_PACKETS 10000000ll
+#define ORCHESTRATOR_CMS_HEIGHT 5
+#define ORCHESTRATOR_CMS_WIDTH 65536
 
-#define ORCHESTRATOR_RELATIVE_TRAFFIC_THRESHOLD 0.02
-#define ELEPHANT_QUEUE_ID 0 // Let's pick queue 0 for Elephant flows
+// We assume a single elephant core, and thus a single elephant queue.
+// Queue 0 is arbitrarily chosen for the elephant queue.
+// DO NOT CHANGE THIS!
+#define ELEPHANT_QUEUE_ID 0
 
 struct rte_ring *flow_feedback_ring;
 struct rte_mempool *flow_id_pool;
@@ -58,6 +36,69 @@ struct flow_t {
   uint16_t src_port;
   uint16_t dst_port;
 };
+
+struct pkt_tag_t {
+  uint8_t i;
+  struct flow_t id;
+};
+
+struct flow_t flow_from_pkt(uint8_t *pkt, uint32_t pkt_len) {
+  struct flow_t id = {0};
+
+  if (pkt_len < sizeof(struct rte_ether_hdr) + sizeof(struct rte_ipv4_hdr) + sizeof(struct tcpudp_hdr)) {
+    return id;
+  }
+
+  struct rte_ether_hdr *ether_hdr = (struct rte_ether_hdr *)pkt;
+
+  if (ether_hdr->ether_type != rte_be_to_cpu_16(RTE_ETHER_TYPE_IPV4)) {
+    return id;
+  }
+
+  struct rte_ipv4_hdr *ipv4_hdr = (struct rte_ipv4_hdr *)(ether_hdr + 1);
+
+  if (ipv4_hdr->next_proto_id != IPPROTO_TCP && ipv4_hdr->next_proto_id != IPPROTO_UDP) {
+    return id;
+  }
+
+  struct tcpudp_hdr *tcpudp_hdr = (struct tcpudp_hdr *)(ipv4_hdr + 1);
+
+  id.src_ip   = ipv4_hdr->src_addr;
+  id.dst_ip   = ipv4_hdr->dst_addr;
+  id.src_port = tcpudp_hdr->src_port;
+  id.dst_port = tcpudp_hdr->dst_port;
+
+  return id;
+}
+
+bool pkt_tag_lt(struct pkt_tag_t *a, struct pkt_tag_t *b) {
+  if (a->id.src_ip != b->id.src_ip) {
+    return a->id.src_ip < b->id.src_ip;
+  }
+
+  if (a->id.dst_ip != b->id.dst_ip) {
+    return a->id.dst_ip < b->id.dst_ip;
+  }
+
+  if (a->id.src_port != b->id.src_port) {
+    return a->id.src_port < b->id.src_port;
+  }
+
+  return a->id.dst_port < b->id.dst_port;
+}
+
+void sort_tagged_packets(struct pkt_tag_t *pkts, uint16_t n) {
+  for (int i = 1; i < n; i++) {
+    struct pkt_tag_t curr = pkts[i];
+    int j                 = i - 1;
+
+    while (j >= 0 && pkt_tag_lt(pkts + j, &curr)) {
+      memcpy(pkts + j + 1, pkts + j, sizeof(struct pkt_tag_t));
+      j = j - 1;
+    }
+    memcpy(pkts + j + 1, &curr, sizeof(struct pkt_tag_t));
+  }
+}
 
 struct rte_flow *generate_elephant_rule(uint16_t port_id, struct flow_t *id, uint16_t rx_q) {
   struct rte_flow_attr attr = {.ingress = 1};
@@ -113,25 +154,26 @@ void orchestrator_loop() {
   struct Vector *elephant_storage   = NULL;
   uint64_t total_packets            = 0;
 
-  if (cms_allocate(5, 65536, sizeof(struct flow_t), EXPIRATION_TIME_NS, &flow_counter) == 0) {
+  if (cms_allocate(ORCHESTRATOR_CMS_HEIGHT, ORCHESTRATOR_CMS_WIDTH, sizeof(struct flow_t),
+                   ORCHESTRATOR_FLOWS_EXPIRATION_TIME_NS, &flow_counter) == 0) {
     rte_exit(EXIT_FAILURE, "Failed to allocate orchestrator Count-Min Sketch\n");
   }
 
-  if (map_allocate(MAX_FLOWS, sizeof(struct flow_t), &elephant_flows) == 0) {
+  if (map_allocate(ORCHESTRATOR_MAX_FLOWS, sizeof(struct flow_t), &elephant_flows) == 0) {
     rte_exit(EXIT_FAILURE, "Failed to allocate orchestrator Map for elephant flows\n");
   }
 
-  if (dchain_allocate(MAX_FLOWS, &elephant_heap) == 0) {
+  if (dchain_allocate(ORCHESTRATOR_MAX_FLOWS, &elephant_heap) == 0) {
     rte_exit(EXIT_FAILURE, "Failed to allocate orchestrator DoubleChain for elephant flows\n");
   }
 
-  if (vector_allocate(sizeof(struct flow_t), MAX_FLOWS, &elephant_storage) == 0) {
+  if (vector_allocate(sizeof(struct flow_t), ORCHESTRATOR_MAX_FLOWS, &elephant_storage) == 0) {
     rte_exit(EXIT_FAILURE, "Failed to allocate orchestrator Vector for elephant flows\n");
   }
 
   void *dequeued_ptrs[BATCH_SIZE];
   int progress = 0;
-  while (total_packets < 10000000) {
+  while (total_packets < ORCHESTRATOR_TELEMETRY_PHASE_PACKETS) {
     unsigned int n = rte_ring_dequeue_burst(flow_feedback_ring, dequeued_ptrs, BATCH_SIZE, NULL);
 
     if (n == 0) {
@@ -145,7 +187,7 @@ void orchestrator_loop() {
 
     rte_mempool_put_bulk(flow_id_pool, dequeued_ptrs, n);
 
-    int current_progress = (total_packets * 100) / 10000000;
+    int current_progress = (total_packets * 100) / ORCHESTRATOR_TELEMETRY_PHASE_PACKETS;
     if (current_progress >= progress + 10) {
       NF_INFO("Processed %d%% of packets...", current_progress);
       progress = current_progress;
@@ -196,69 +238,6 @@ void orchestrator_loop() {
   }
 }
 
-struct pkt_tag_t {
-  uint8_t i;
-  struct flow_t id;
-};
-
-bool pkt_tag_lt(struct pkt_tag_t *a, struct pkt_tag_t *b) {
-  if (a->id.src_ip != b->id.src_ip) {
-    return a->id.src_ip < b->id.src_ip;
-  }
-
-  if (a->id.dst_ip != b->id.dst_ip) {
-    return a->id.dst_ip < b->id.dst_ip;
-  }
-
-  if (a->id.src_port != b->id.src_port) {
-    return a->id.src_port < b->id.src_port;
-  }
-
-  return a->id.dst_port < b->id.dst_port;
-}
-
-void sort_tagged_packets(struct pkt_tag_t *pkts, uint16_t n) {
-  for (int i = 1; i < n; i++) {
-    struct pkt_tag_t curr = pkts[i];
-    int j                 = i - 1;
-
-    while (j >= 0 && pkt_tag_lt(&pkts[j], &curr)) {
-      pkts[j + 1] = pkts[j];
-      j           = j - 1;
-    }
-    pkts[j + 1] = curr;
-  }
-}
-
-struct flow_t flow_from_pkt(uint8_t *pkt, uint32_t pkt_len) {
-  struct flow_t id = {0};
-
-  if (pkt_len < sizeof(struct rte_ether_hdr) + sizeof(struct rte_ipv4_hdr) + sizeof(struct tcpudp_hdr)) {
-    return id;
-  }
-
-  struct rte_ether_hdr *ether_hdr = (struct rte_ether_hdr *)pkt;
-
-  if (ether_hdr->ether_type != rte_be_to_cpu_16(RTE_ETHER_TYPE_IPV4)) {
-    return id;
-  }
-
-  struct rte_ipv4_hdr *ipv4_hdr = (struct rte_ipv4_hdr *)(ether_hdr + 1);
-
-  if (ipv4_hdr->next_proto_id != IPPROTO_TCP && ipv4_hdr->next_proto_id != IPPROTO_UDP) {
-    return id;
-  }
-
-  struct tcpudp_hdr *tcpudp_hdr = (struct tcpudp_hdr *)(ipv4_hdr + 1);
-
-  id.src_ip   = ipv4_hdr->src_addr;
-  id.dst_ip   = ipv4_hdr->dst_addr;
-  id.src_port = tcpudp_hdr->src_port;
-  id.dst_port = tcpudp_hdr->dst_port;
-
-  return id;
-}
-
 void mice_worker_loop() {
   if (!nf_init()) {
     rte_exit(EXIT_FAILURE, "Error initializing NF");
@@ -280,21 +259,19 @@ void mice_worker_loop() {
   while (1) {
     for (uint16_t device = 0; device < devices_count; device++) {
       struct rte_mbuf *mbufs[BATCH_SIZE];
-      uint16_t rx_count = rte_eth_rx_burst(device, queue_id, mbufs, BATCH_SIZE);
 
-      if (rx_count == 0) {
-        continue;
-      }
+      uint16_t rx_count = rte_eth_rx_burst(device, queue_id, mbufs + rx_count, BATCH_SIZE);
+      // printf("Received batch of %u packets on Mice queue!\n", rx_count);
 
       for (uint16_t n = 0; n < rx_count; n++) {
         uint16_t src_device = mbufs[n]->port;
         uint8_t *pkt        = rte_pktmbuf_mtod(mbufs[n], uint8_t *);
         uint32_t pkt_len    = mbufs[n]->pkt_len;
+        struct flow_t id    = flow_from_pkt(pkt, pkt_len);
 
         struct flow_t *id_entry;
-
         if (rte_mempool_get(flow_id_pool, (void **)&id_entry) == 0) {
-          *id_entry = flow_from_pkt(pkt, pkt_len);
+          *id_entry = id;
           if (rte_ring_enqueue(flow_feedback_ring, id_entry) < 0) {
             rte_mempool_put(flow_id_pool, id_entry);
           }
@@ -310,22 +287,33 @@ void mice_worker_loop() {
           tx_batch_per_port[dst_device].batch[tx_count] = mbufs[n];
           tx_batch_per_port[dst_device].tx_count++;
         }
-      }
 
-      for (uint16_t dst_device = 0; dst_device < devices_count; dst_device++) {
-        uint16_t sent_count = rte_eth_tx_burst(dst_device, queue_id, tx_batch_per_port[dst_device].batch,
-                                               tx_batch_per_port[dst_device].tx_count);
-        for (uint16_t n = sent_count; n < tx_batch_per_port[dst_device].tx_count; n++) {
-          rte_pktmbuf_free(mbufs[n]); // should not happen, but we're in
-                                      // the unverified case anyway
+        for (uint16_t dst_device = 0; dst_device < devices_count; dst_device++) {
+          uint16_t sent_count = rte_eth_tx_burst(dst_device, queue_id, tx_batch_per_port[dst_device].batch,
+                                                 tx_batch_per_port[dst_device].tx_count);
+          for (uint16_t n = sent_count; n < tx_batch_per_port[dst_device].tx_count; n++) {
+            rte_pktmbuf_free(mbufs[n]); // should not happen, but we're in
+                                        // the unverified case anyway
+          }
+          tx_batch_per_port[dst_device].tx_count = 0;
         }
-        tx_batch_per_port[dst_device].tx_count = 0;
       }
     }
   }
 }
 
+#if TRACK_STRIDE_SIZES
 uint64_t stride_sizes[BATCH_SIZE];
+void handle_sigint(int sig) {
+  printf("\nCaught signal %d (SIGINT). Cleaning up...\n", sig);
+
+  for (size_t i = 0; i < BATCH_SIZE; i++) {
+    printf("Stride size %zu: %lu packets\n", i + 1, stride_sizes[i]);
+  }
+
+  _exit(0);
+}
+#endif
 
 void elephant_worker_loop() {
   if (!nf_init()) {
@@ -336,8 +324,6 @@ void elephant_worker_loop() {
   uint16_t queue_id = lcores_conf[lcore_id].queue_id;
 
   NF_INFO("Elephant worker core %u started, listening on queue %u.", lcore_id, queue_id);
-
-  memset(stride_sizes, 0, sizeof(stride_sizes));
 
   struct tx_mbuf_batch {
     struct rte_mbuf *batch[BATCH_SIZE];
@@ -390,21 +376,14 @@ void elephant_worker_loop() {
 
       current_batch = 0;
       for (uint16_t n = 0; n < rx_count; current_batch++) {
+#if TRACK_STRIDE_SIZES
         stride_sizes[strides[current_batch] - 1]++;
+#endif
 
         uint8_t i           = tagged_pkts[n].i;
         uint8_t *pkt        = pkts[i];
         uint32_t pkt_len    = pkt_lens[i];
         uint16_t src_device = mbufs[i]->port;
-
-        struct flow_t *id_entry;
-
-        if (rte_mempool_get(flow_id_pool, (void **)&id_entry) == 0) {
-          *id_entry = tagged_pkts[n].id;
-          if (rte_ring_enqueue(flow_feedback_ring, id_entry) < 0) {
-            rte_mempool_put(flow_id_pool, id_entry);
-          }
-        }
 
         uint16_t dst_device = nf_process(src_device, pkt, pkt_len, now);
 
@@ -435,19 +414,7 @@ void elephant_worker_loop() {
   }
 }
 
-void handle_sigint(int sig) {
-  printf("\nCaught signal %d (SIGINT). Cleaning up...\n", sig);
-
-  for (size_t i = 0; i < BATCH_SIZE; i++) {
-    printf("Stride size %zu: %lu packets\n", i + 1, stride_sizes[i]);
-  }
-
-  _exit(0);
-}
-
-int main(int argc, char **argv) {
-  signal(SIGINT, handle_sigint);
-
+int nf_setup(int argc, char **argv) {
   // Initialize the DPDK Environment Abstraction Layer (EAL)
   int ret = rte_eal_init(argc, argv);
   if (ret < 0) {
@@ -457,9 +424,6 @@ int main(int argc, char **argv) {
   argv += ret;
 
   unsigned nb_devices = rte_eth_dev_count_avail();
-
-  // cache size (per-core, not useful in a single-threaded app)
-  unsigned cache_size = 0;
 
   // application private area size
   uint16_t priv_size      = 0;
@@ -475,7 +439,7 @@ int main(int argc, char **argv) {
   uint16_t generic_queues_start = 1;
   uint16_t nb_generic_workers   = nb_workers - 1;
 
-  struct rte_mempool *mbuf_pool = rte_pktmbuf_pool_create("MEMPOOL", MEMPOOL_BUFFER_COUNT * nb_devices, cache_size,
+  struct rte_mempool *mbuf_pool = rte_pktmbuf_pool_create("MEMPOOL", MEMPOOL_BUFFER_COUNT * nb_devices, MBUF_CACHE_SIZE,
                                                           priv_size, data_room_size, rte_socket_id());
   if (mbuf_pool == NULL) {
     rte_exit(EXIT_FAILURE, "Cannot create pool: %s\n", rte_strerror(rte_errno));
@@ -558,6 +522,18 @@ int main(int argc, char **argv) {
   flow_feedback_ring = rte_ring_create("FLOW_FEEDBACK_RING", RING_SIZE, rte_socket_id(),
                                        RING_F_SC_DEQ); // Multi-Producer, Single-Consumer
 
+#if TRACK_STRIDE_SIZES
+  memset(stride_sizes, 0, sizeof(stride_sizes));
+  signal(SIGINT, handle_sigint);
+#endif
+
+  return 0;
+}
+
+static inline void worker_loop() {
+  uint16_t nb_workers           = rte_lcore_count() - 1;
+  uint16_t generic_queues_start = 1;
+
   uint16_t worker_id;
   uint16_t worker_idx = 0;
   RTE_LCORE_FOREACH_WORKER(worker_id) {
@@ -566,131 +542,12 @@ int main(int argc, char **argv) {
       lcores_conf[worker_id].queue_id = ELEPHANT_QUEUE_ID;
       rte_eal_remote_launch((lcore_function_t *)elephant_worker_loop, NULL, worker_id);
     } else {
-      // Generic workers
-      lcores_conf[worker_id].queue_id = generic_queues_start + (worker_idx - 1);
+      // Generic workers. They start at queue 1, since queue 0 is reserved for the elephant core.
+      lcores_conf[worker_id].queue_id = 1 + (worker_idx - 1);
       rte_eal_remote_launch((lcore_function_t *)mice_worker_loop, NULL, worker_id);
     }
     worker_idx++;
   }
 
   orchestrator_loop();
-
-  return 0;
-}
-
-struct state_t {
-  struct Map *fm;
-  struct Vector *fv;
-  struct DoubleChain *heap;
-};
-
-RTE_DEFINE_PER_LCORE(struct state_t, state);
-
-bool nf_init(void) {
-  struct state_t *state = &RTE_PER_LCORE(state);
-
-  if (map_allocate(MAX_FLOWS, sizeof(struct flow_t), &(state->fm)) == 0) {
-    return false;
-  }
-
-  if (vector_allocate(sizeof(struct flow_t), MAX_FLOWS, &(state->fv)) == 0) {
-    return false;
-  }
-
-  if (dchain_allocate(MAX_FLOWS, &(state->heap)) == 0) {
-    return false;
-  }
-
-  return true;
-}
-
-void flow_manager_expire(time_ns_t time) {
-  struct state_t *state = &RTE_PER_LCORE(state);
-  expire_items_single_map(state->heap, state->fv, state->fm, time);
-}
-
-void flow_manager_allocate_or_refresh_flow(struct flow_t *id, time_ns_t time) {
-  struct state_t *state = &RTE_PER_LCORE(state);
-
-  int index;
-  if (map_get(state->fm, id, &index)) {
-    NF_DEBUG("Rejuvenated flow");
-    dchain_rejuvenate_index(state->heap, index, time);
-    return;
-  }
-  if (!dchain_allocate_new_index(state->heap, &index, time)) {
-    // No luck, the flow table is full, but we can at least let the
-    // outgoing traffic out.
-    return;
-  }
-
-  NF_DEBUG("Allocating new flow");
-
-  struct flow_t *key = 0;
-  vector_borrow(state->fv, index, (void **)&key);
-  memcpy((void *)key, (void *)id, sizeof(struct flow_t));
-  map_put(state->fm, key, index);
-  vector_return(state->fv, index, key);
-}
-
-bool flow_manager_get_refresh_flow(struct flow_t *id, time_ns_t time) {
-  struct state_t *state = &RTE_PER_LCORE(state);
-
-  int index;
-  if (map_get(state->fm, id, &index) == 0) {
-    return false;
-  }
-
-  dchain_rejuvenate_index(state->heap, index, time);
-  return true;
-}
-
-int nf_process(uint16_t device, uint8_t *pkt, uint32_t pkt_len, time_ns_t now) {
-  flow_manager_expire(now);
-
-  struct rte_ether_hdr *rte_ether_header = (struct rte_ether_hdr *)pkt;
-
-  if (rte_ether_header->ether_type != rte_be_to_cpu_16(RTE_ETHER_TYPE_IPV4)) {
-    NF_DEBUG("Not IPv4, dropping");
-    return DROP;
-  }
-
-  struct rte_ipv4_hdr *rte_ipv4_header = (struct rte_ipv4_hdr *)(rte_ether_header + 1);
-
-  if (rte_ipv4_header->next_proto_id != IPPROTO_TCP && rte_ipv4_header->next_proto_id != IPPROTO_UDP) {
-    NF_DEBUG("Not TCP or UDP, dropping");
-    return DROP;
-  }
-
-  struct tcpudp_hdr *tcpudp_header = (struct tcpudp_hdr *)(rte_ipv4_header + 1);
-
-  if (device == LAN) {
-    NF_DEBUG("Seen packet from LAN, allocating/rejuvenating flow and sending to WAN");
-    struct flow_t id = {
-        .src_ip   = rte_ipv4_header->src_addr,
-        .dst_ip   = rte_ipv4_header->dst_addr,
-        .src_port = tcpudp_header->src_port,
-        .dst_port = tcpudp_header->dst_port,
-    };
-
-    flow_manager_allocate_or_refresh_flow(&id, now);
-
-    return WAN;
-  } else {
-    NF_DEBUG("Seen packet from WAN, checking if flow is known and sending to LAN if so");
-    // Inverse the src and dst for the "reply flow"
-    struct flow_t id = {
-        .src_ip   = rte_ipv4_header->dst_addr,
-        .dst_ip   = rte_ipv4_header->src_addr,
-        .src_port = tcpudp_header->dst_port,
-        .dst_port = tcpudp_header->src_port,
-    };
-
-    if (!flow_manager_get_refresh_flow(&id, now)) {
-      NF_DEBUG("Unknown external flow, dropping");
-      return DROP;
-    }
-
-    return LAN;
-  }
 }

@@ -9,7 +9,7 @@ import os
 import statistics
 
 SCRIPT_DIR = Path(__file__).parent.absolute()
-OUT_DIR = SCRIPT_DIR / "out"
+OUT_DIR = SCRIPT_DIR / "plots"
 
 # FIG_FORMAT = "pdf"
 FIG_FORMAT = "png"

@@ -2,6 +2,8 @@
 #include "map-impl-pow2.h"
 #include "../util/compute.h"
 
+#include <rte_malloc.h>
+
 #include <stdlib.h>
 #include <stddef.h>
 
@@ -23,51 +25,51 @@ int map_allocate(unsigned capacity, unsigned key_size, struct Map **map_out) {
   }
 
   struct Map *old_map_val = *map_out;
-  struct Map *map_alloc   = (struct Map *)malloc(sizeof(struct Map));
+  struct Map *map_alloc   = (struct Map *)rte_malloc("struct Map", sizeof(struct Map), 64);
   if (map_alloc == NULL)
     return 0;
   *map_out       = (struct Map *)map_alloc;
-  int *bbs_alloc = (int *)malloc(sizeof(int) * (int)capacity);
+  int *bbs_alloc = (int *)rte_malloc("int", sizeof(int) * (int)capacity, 64);
   if (bbs_alloc == NULL) {
-    free(map_alloc);
+    rte_free(map_alloc);
     *map_out = old_map_val;
     return 0;
   }
   (*map_out)->busybits = bbs_alloc;
-  void **keyps_alloc   = (void **)malloc(sizeof(void *) * (int)capacity);
+  void **keyps_alloc   = (void **)rte_malloc("void **", sizeof(void *) * (int)capacity, 64);
   if (keyps_alloc == NULL) {
-    free(bbs_alloc);
-    free(map_alloc);
+    rte_free(bbs_alloc);
+    rte_free(map_alloc);
     *map_out = old_map_val;
     return 0;
   }
   (*map_out)->keyps   = keyps_alloc;
-  unsigned *khs_alloc = (unsigned *)malloc(sizeof(unsigned) * (int)capacity);
+  unsigned *khs_alloc = (unsigned *)rte_malloc("unsigned", sizeof(unsigned) * (int)capacity, 64);
   if (khs_alloc == NULL) {
-    free(keyps_alloc);
-    free(bbs_alloc);
-    free(map_alloc);
+    rte_free(keyps_alloc);
+    rte_free(bbs_alloc);
+    rte_free(map_alloc);
     *map_out = old_map_val;
     return 0;
   }
   (*map_out)->khs = khs_alloc;
-  int *chns_alloc = (int *)malloc(sizeof(int) * (int)capacity);
+  int *chns_alloc = (int *)rte_malloc("int", sizeof(int) * (int)capacity, 64);
   if (chns_alloc == NULL) {
-    free(khs_alloc);
-    free(keyps_alloc);
-    free(bbs_alloc);
-    free(map_alloc);
+    rte_free(khs_alloc);
+    rte_free(keyps_alloc);
+    rte_free(bbs_alloc);
+    rte_free(map_alloc);
     *map_out = old_map_val;
     return 0;
   }
   (*map_out)->chns = chns_alloc;
-  int *vals_alloc  = (int *)malloc(sizeof(int) * (int)capacity);
+  int *vals_alloc  = (int *)rte_malloc("int", sizeof(int) * (int)capacity, 64);
   if (vals_alloc == NULL) {
-    free(chns_alloc);
-    free(khs_alloc);
-    free(keyps_alloc);
-    free(bbs_alloc);
-    free(map_alloc);
+    rte_free(chns_alloc);
+    rte_free(khs_alloc);
+    rte_free(keyps_alloc);
+    rte_free(bbs_alloc);
+    rte_free(map_alloc);
     *map_out = old_map_val;
     return 0;
   }
@@ -76,8 +78,8 @@ int map_allocate(unsigned capacity, unsigned key_size, struct Map **map_out) {
   (*map_out)->size     = 0;
   (*map_out)->key_size = key_size;
 
-  map_impl_init((*map_out)->busybits, (*map_out)->key_size, (*map_out)->keyps, (*map_out)->khs, (*map_out)->chns, (*map_out)->vals,
-                capacity);
+  map_impl_init((*map_out)->busybits, (*map_out)->key_size, (*map_out)->keyps, (*map_out)->khs, (*map_out)->chns,
+                (*map_out)->vals, capacity);
 
   return 1;
 }
@@ -101,7 +103,8 @@ static unsigned khash(void *key, unsigned key_size) {
 
 int map_get(struct Map *map, void *key, int *value_out) {
   unsigned hash = khash(key, map->key_size);
-  return map_impl_get(map->busybits, map->keyps, map->khs, map->chns, map->vals, key, map->key_size, hash, value_out, map->capacity);
+  return map_impl_get(map->busybits, map->keyps, map->khs, map->chns, map->vals, key, map->key_size, hash, value_out,
+                      map->capacity);
 }
 
 void map_put(struct Map *map, void *key, int value) {
