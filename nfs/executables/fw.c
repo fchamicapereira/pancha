@@ -1,10 +1,5 @@
 #include "loop.h"
 
-#define MAX_FLOWS 65536
-#define EXPIRATION_TIME_NS 1000000000 // 1 seconds
-#define LAN 0
-#define WAN 1
-
 int main(int argc, char **argv) {
   nf_setup(argc, argv);
   worker_loop();
@@ -52,6 +47,7 @@ void flow_manager_allocate_or_refresh_flow(struct flow_t *id, time_ns_t time) {
   if (!dchain_allocate_new_index(state.heap, &index, time)) {
     // No luck, the flow table is full, but we can at least let the
     // outgoing traffic out.
+    NF_INFO("[%ld] Flow table is full!", time);
     return;
   }
 

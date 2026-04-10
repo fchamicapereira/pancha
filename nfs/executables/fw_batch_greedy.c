@@ -2,49 +2,6 @@
 
 #include "loop_batch_greedy.h"
 
-#define MAX_FLOWS 65536
-#define EXPIRATION_TIME_NS 1000000000 // 1 seconds
-#define LAN 0
-#define WAN 1
-
-bool flow_match(uint8_t *pkt0, uint32_t pkt_len0, uint8_t *pkt1, uint32_t pkt_len1) {
-  if (pkt_len0 != pkt_len1) {
-    return false;
-  }
-
-  if (pkt_len0 < sizeof(struct rte_ether_hdr) + sizeof(struct rte_ipv4_hdr) + sizeof(struct tcpudp_hdr)) {
-    return false;
-  }
-
-  struct rte_ether_hdr *ether_hdr_0 = (struct rte_ether_hdr *)pkt0;
-  struct rte_ether_hdr *ether_hdr_1 = (struct rte_ether_hdr *)pkt1;
-
-  if (ether_hdr_0->ether_type != ether_hdr_1->ether_type) {
-    return false;
-  }
-
-  if (ether_hdr_0->ether_type != rte_be_to_cpu_16(RTE_ETHER_TYPE_IPV4)) {
-    return false;
-  }
-
-  struct rte_ipv4_hdr *ipv4_hdr_0 = (struct rte_ipv4_hdr *)(ether_hdr_0 + 1);
-  struct rte_ipv4_hdr *ipv4_hdr_1 = (struct rte_ipv4_hdr *)(ether_hdr_1 + 1);
-
-  if (ipv4_hdr_0->next_proto_id != ipv4_hdr_1->next_proto_id) {
-    return false;
-  }
-
-  if (ipv4_hdr_0->next_proto_id != IPPROTO_TCP && ipv4_hdr_0->next_proto_id != IPPROTO_UDP) {
-    return false;
-  }
-
-  struct tcpudp_hdr *tcpudp_hdr_0 = (struct tcpudp_hdr *)(ipv4_hdr_0 + 1);
-  struct tcpudp_hdr *tcpudp_hdr_1 = (struct tcpudp_hdr *)(ipv4_hdr_1 + 1);
-
-  return (ipv4_hdr_0->src_addr == ipv4_hdr_1->src_addr) && (ipv4_hdr_0->dst_addr == ipv4_hdr_1->dst_addr) &&
-         (tcpudp_hdr_0->src_port == tcpudp_hdr_1->src_port) && (tcpudp_hdr_0->dst_port == tcpudp_hdr_1->dst_port);
-}
-
 int main(int argc, char **argv) {
   nf_setup(argc, argv);
   worker_loop();
@@ -58,13 +15,6 @@ struct state_t {
 };
 
 struct state_t state;
-
-struct flow_t {
-  uint32_t src_ip;
-  uint32_t dst_ip;
-  uint16_t src_port;
-  uint16_t dst_port;
-};
 
 bool nf_init(void) {
   if (map_allocate(MAX_FLOWS, sizeof(struct flow_t), &(state.fm)) == 0) {
@@ -81,6 +31,7 @@ bool nf_init(void) {
 
   return true;
 }
+
 void flow_manager_allocate_or_refresh_flow(struct flow_t *id, time_ns_t time) {
   int index;
   if (map_get(state.fm, id, &index)) {

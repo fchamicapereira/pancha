@@ -2,6 +2,46 @@
 
 #include "boilerplate.h"
 
+#ifndef TRACK_STRIDE_SIZES
+#define TRACK_STRIDE_SIZES 0
+#endif
+
+struct flow_t {
+  uint32_t src_ip;
+  uint32_t dst_ip;
+  uint16_t src_port;
+  uint16_t dst_port;
+};
+
+struct flow_t flow_from_pkt(uint8_t *pkt, uint32_t pkt_len) {
+  struct flow_t id = {0};
+
+  if (pkt_len < sizeof(struct rte_ether_hdr) + sizeof(struct rte_ipv4_hdr) + sizeof(struct tcpudp_hdr)) {
+    return id;
+  }
+
+  struct rte_ether_hdr *ether_hdr = (struct rte_ether_hdr *)pkt;
+
+  if (ether_hdr->ether_type != rte_be_to_cpu_16(RTE_ETHER_TYPE_IPV4)) {
+    return id;
+  }
+
+  struct rte_ipv4_hdr *ipv4_hdr = (struct rte_ipv4_hdr *)(ether_hdr + 1);
+
+  if (ipv4_hdr->next_proto_id != IPPROTO_TCP && ipv4_hdr->next_proto_id != IPPROTO_UDP) {
+    return id;
+  }
+
+  struct tcpudp_hdr *tcpudp_hdr = (struct tcpudp_hdr *)(ipv4_hdr + 1);
+
+  id.src_ip   = ipv4_hdr->src_addr;
+  id.dst_ip   = ipv4_hdr->dst_addr;
+  id.src_port = tcpudp_hdr->src_port;
+  id.dst_port = tcpudp_hdr->dst_port;
+
+  return id;
+}
+
 // Initializes the given device using the given memory pool
 int nf_init_device(uint16_t device, struct rte_mempool *mbuf_pool) {
   int retval;
@@ -41,6 +81,19 @@ int nf_init_device(uint16_t device, struct rte_mempool *mbuf_pool) {
   return 0;
 }
 
+#if TRACK_STRIDE_SIZES
+uint64_t stride_sizes[BATCH_SIZE];
+void handle_sigint(int sig) {
+  printf("\nCaught signal %d (SIGINT). Cleaning up...\n", sig);
+
+  for (size_t i = 0; i < BATCH_SIZE; i++) {
+    printf("Stride size %zu: %lu packets\n", i + 1, stride_sizes[i]);
+  }
+
+  _exit(0);
+}
+#endif
+
 int nf_setup(int argc, char **argv) {
   // Initialize the DPDK Environment Abstraction Layer (EAL)
   int ret = rte_eal_init(argc, argv);
@@ -77,6 +130,11 @@ int nf_setup(int argc, char **argv) {
     rte_exit(EXIT_FAILURE, "Error initializing NF");
   }
 
+#if TRACK_STRIDE_SIZES
+  memset(stride_sizes, 0, sizeof(stride_sizes));
+  signal(SIGINT, handle_sigint);
+#endif
+
   return 0;
 }
 
@@ -96,34 +154,59 @@ static inline void worker_loop() {
       struct rte_mbuf *mbufs[BATCH_SIZE];
       uint16_t rx_count = rte_eth_rx_burst(device, 0, mbufs, BATCH_SIZE);
 
-      if (rx_count == 0) {
-        continue;
+      struct flow_t flows[BATCH_SIZE];
+
+      for (uint16_t n = 0; n < rx_count; n++) {
+        uint8_t *pkt     = rte_pktmbuf_mtod(mbufs[n], uint8_t *);
+        uint32_t pkt_len = mbufs[n]->pkt_len;
+        flows[n]         = flow_from_pkt(pkt, pkt_len);
       }
 
-      time_ns_t now       = current_time();
-      uint8_t *data       = rte_pktmbuf_mtod(mbufs[0], uint8_t *);
-      uint16_t dst_device = nf_process(mbufs[0]->port, data, mbufs[0]->pkt_len, now);
+      uint16_t n = 0;
+      while (n < rx_count) {
+        time_ns_t now       = current_time();
+        uint8_t *pkt        = rte_pktmbuf_mtod(mbufs[n], uint8_t *);
+        uint32_t pkt_len    = mbufs[n]->pkt_len;
+        uint16_t dst_device = nf_process(device, pkt, pkt_len, now);
 
-      if (dst_device == DROP) {
-        for (uint16_t n = 0; n < rx_count; n++) {
-          rte_pktmbuf_free(tx_batch_per_port[dst_device].batch[n]);
-        }
-      } else {
-        for (uint16_t n = 0; n < rx_count; n++) {
+        if (dst_device == DROP) {
+          rte_pktmbuf_free(mbufs[n]);
+        } else {
           uint16_t tx_count                             = tx_batch_per_port[dst_device].tx_count;
           tx_batch_per_port[dst_device].batch[tx_count] = mbufs[n];
           tx_batch_per_port[dst_device].tx_count++;
         }
+
+        uint8_t logical_batch_size = 0;
+        for (uint16_t i = n + 1; i < rx_count; i++) {
+          if (memcmp(flows + n, flows + i, sizeof(struct flow_t)) == 0) {
+            logical_batch_size++;
+
+            if (dst_device == DROP) {
+              rte_pktmbuf_free(mbufs[i]);
+            } else {
+              uint16_t tx_count                             = tx_batch_per_port[dst_device].tx_count;
+              tx_batch_per_port[dst_device].batch[tx_count] = mbufs[i];
+              tx_batch_per_port[dst_device].tx_count++;
+            }
+          } else {
+            break;
+          }
+        }
+
+        n += logical_batch_size + 1;
+
+#if TRACK_STRIDE_SIZES
+        stride_sizes[logical_batch_size]++;
+#endif
       }
 
-      for (uint16_t dst_device = 0; dst_device < devices_count; dst_device++) {
-        uint16_t sent_count = rte_eth_tx_burst(dst_device, 0, tx_batch_per_port[dst_device].batch,
-                                               tx_batch_per_port[dst_device].tx_count);
-        for (uint16_t n = sent_count; n < tx_batch_per_port[dst_device].tx_count; n++) {
-          rte_pktmbuf_free(tx_batch_per_port[dst_device].batch[n]);
-        }
-        tx_batch_per_port[dst_device].tx_count = 0;
+      uint16_t sent_count =
+          rte_eth_tx_burst(device, 0, tx_batch_per_port[device].batch, tx_batch_per_port[device].tx_count);
+      for (uint16_t n = sent_count; n < tx_batch_per_port[device].tx_count; n++) {
+        rte_pktmbuf_free(tx_batch_per_port[device].batch[n]);
       }
+      tx_batch_per_port[device].tx_count = 0;
     }
   }
 }

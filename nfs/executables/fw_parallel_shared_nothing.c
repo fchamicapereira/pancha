@@ -2,11 +2,6 @@
 
 #include "loop_parallel_shared_nothing.h"
 
-#define MAX_FLOWS 65536
-#define EXPIRATION_TIME_NS 1000000000 // 1 seconds
-#define LAN 0
-#define WAN 1
-
 int main(int argc, char **argv) {
   nf_setup(argc, argv);
   worker_loop();
@@ -41,7 +36,7 @@ bool nf_init(void) {
 
 void flow_manager_expire(time_ns_t time) {
   struct state_t *state = &RTE_PER_LCORE(state);
-  expire_items_single_map(state->heap, state->fv, state->fm, time);
+  expire_items_single_map(state->heap, state->fv, state->fm, time - EXPIRATION_TIME_NS);
 }
 
 void flow_manager_allocate_or_refresh_flow(struct flow_t *id, time_ns_t time) {
@@ -86,14 +81,14 @@ int nf_process(uint16_t device, uint8_t *pkt, uint32_t pkt_len, time_ns_t now) {
   struct rte_ether_hdr *rte_ether_header = (struct rte_ether_hdr *)pkt;
 
   if (rte_ether_header->ether_type != rte_be_to_cpu_16(RTE_ETHER_TYPE_IPV4)) {
-    NF_DEBUG("Not IPv4, dropping");
+    NF_INFO("Not IPv4, dropping");
     return DROP;
   }
 
   struct rte_ipv4_hdr *rte_ipv4_header = (struct rte_ipv4_hdr *)(rte_ether_header + 1);
 
   if (rte_ipv4_header->next_proto_id != IPPROTO_TCP && rte_ipv4_header->next_proto_id != IPPROTO_UDP) {
-    NF_DEBUG("Not TCP or UDP, dropping");
+    NF_INFO("Not TCP or UDP, dropping");
     return DROP;
   }
 
@@ -122,7 +117,7 @@ int nf_process(uint16_t device, uint8_t *pkt, uint32_t pkt_len, time_ns_t now) {
     };
 
     if (!flow_manager_get_refresh_flow(&id, now)) {
-      NF_DEBUG("Unknown external flow, dropping");
+      NF_INFO("Unknown external flow, dropping");
       return DROP;
     }
 

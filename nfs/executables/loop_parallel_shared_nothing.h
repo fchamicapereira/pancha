@@ -35,7 +35,7 @@ void sub_worker_loop() {
     for (uint16_t device = 0; device < devices_count; device++) {
       struct rte_mbuf *mbufs[BATCH_SIZE];
 
-      uint16_t rx_count = rte_eth_rx_burst(device, queue_id, mbufs + rx_count, BATCH_SIZE);
+      uint16_t rx_count = rte_eth_rx_burst(device, queue_id, mbufs, BATCH_SIZE);
 
       for (uint16_t n = 0; n < rx_count; n++) {
         uint16_t src_device = mbufs[n]->port;
@@ -52,15 +52,15 @@ void sub_worker_loop() {
           tx_batch_per_port[dst_device].batch[tx_count] = mbufs[n];
           tx_batch_per_port[dst_device].tx_count++;
         }
+      }
 
-        for (uint16_t dst_device = 0; dst_device < devices_count; dst_device++) {
-          uint16_t sent_count = rte_eth_tx_burst(dst_device, queue_id, tx_batch_per_port[dst_device].batch,
-                                                 tx_batch_per_port[dst_device].tx_count);
-          for (uint16_t n = sent_count; n < tx_batch_per_port[dst_device].tx_count; n++) {
-            rte_pktmbuf_free(mbufs[n]);
-          }
-          tx_batch_per_port[dst_device].tx_count = 0;
+      for (uint16_t dst_device = 0; dst_device < devices_count; dst_device++) {
+        uint16_t sent_count = rte_eth_tx_burst(dst_device, queue_id, tx_batch_per_port[dst_device].batch,
+                                               tx_batch_per_port[dst_device].tx_count);
+        for (uint16_t n = sent_count; n < tx_batch_per_port[dst_device].tx_count; n++) {
+          rte_pktmbuf_free(tx_batch_per_port[dst_device].batch[n]);
         }
+        tx_batch_per_port[dst_device].tx_count = 0;
       }
     }
   }

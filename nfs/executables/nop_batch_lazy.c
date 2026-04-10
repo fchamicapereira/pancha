@@ -1,4 +1,6 @@
-#include "loop_batch_straw.h"
+#define TRACK_STRIDE_SIZES 0
+
+#include "loop_batch_lazy.h"
 
 int main(int argc, char **argv) {
   nf_setup(argc, argv);

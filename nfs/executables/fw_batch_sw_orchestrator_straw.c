@@ -1,6 +1,4 @@
-#define TRACK_STRIDE_SIZES 0
-
-#include "loop_batch_sw_orchestrator_sorted.h"
+#include "loop_batch_sw_orchestrator_straw.h"
 
 int main(int argc, char **argv) {
   nf_setup(argc, argv);
@@ -19,20 +17,15 @@ RTE_DEFINE_PER_LCORE(struct state_t, state);
 bool nf_init(void) {
   struct state_t *state = &RTE_PER_LCORE(state);
 
-  uint32_t max_flows = MAX_FLOWS;
-  if (rte_lcore_id() == 16) {
-    max_flows = ORCHESTRATOR_MAX_FLOWS;
-  }
-
-  if (map_allocate(max_flows, sizeof(struct flow_t), &(state->fm)) == 0) {
+  if (map_allocate(MAX_FLOWS, sizeof(struct flow_t), &(state->fm)) == 0) {
     return false;
   }
 
-  if (vector_allocate(sizeof(struct flow_t), max_flows, &(state->fv)) == 0) {
+  if (vector_allocate(sizeof(struct flow_t), MAX_FLOWS, &(state->fv)) == 0) {
     return false;
   }
 
-  if (dchain_allocate(max_flows, &(state->heap)) == 0) {
+  if (dchain_allocate(MAX_FLOWS, &(state->heap)) == 0) {
     return false;
   }
 

@@ -26,6 +26,11 @@
 #define DROP ((uint16_t)-1)
 #define FLOOD ((uint16_t)-2)
 
+#define MAX_FLOWS 524288
+#define EXPIRATION_TIME_NS 1000000000 // 1 seconds
+#define LAN 0
+#define WAN 1
+
 static const uint32_t MBUF_CACHE_SIZE = 256;
 
 static const uint16_t RX_QUEUE_SIZE = 1024;

@@ -1,6 +1,4 @@
-#define TRACK_STRIDE_SIZES 0
-
-#include "loop_batch_sorted.h"
+#include "loop_batch_sw_orchestrator_straw.h"
 
 #define SKETCH_WIDTH 65536
 #define SKETCH_HEIGHT 7
@@ -18,7 +16,7 @@ struct state_t {
   struct CMS *flow_counter_ports;
 };
 
-struct state_t state;
+RTE_DEFINE_PER_LCORE(struct state_t, state);
 
 struct flow_ips_t {
   uint32_t src_ip;
@@ -31,18 +29,20 @@ struct flow_ports_t {
 };
 
 bool nf_init(void) {
+  struct state_t *state = &RTE_PER_LCORE(state);
+
   if (cms_allocate(SKETCH_HEIGHT, SKETCH_WIDTH, sizeof(struct flow_t), EXPIRATION_TIME_NS,
-                   &(state.flow_counter_5tuple)) == 0) {
+                   &(state->flow_counter_5tuple)) == 0) {
     return false;
   }
 
   if (cms_allocate(SKETCH_HEIGHT, SKETCH_WIDTH, sizeof(struct flow_ips_t), EXPIRATION_TIME_NS,
-                   &(state.flow_counter_ips)) == 0) {
+                   &(state->flow_counter_ips)) == 0) {
     return false;
   }
 
   if (cms_allocate(SKETCH_HEIGHT, SKETCH_WIDTH, sizeof(struct flow_ports_t), EXPIRATION_TIME_NS,
-                   &(state.flow_counter_ports)) == 0) {
+                   &(state->flow_counter_ports)) == 0) {
     return false;
   }
 
@@ -50,12 +50,15 @@ bool nf_init(void) {
 }
 
 void expire_entries(time_ns_t now) {
-  cms_periodic_cleanup(state.flow_counter_5tuple, now);
-  cms_periodic_cleanup(state.flow_counter_ips, now);
-  cms_periodic_cleanup(state.flow_counter_ports, now);
+  struct state_t *state = &RTE_PER_LCORE(state);
+  cms_periodic_cleanup(state->flow_counter_5tuple, now);
+  cms_periodic_cleanup(state->flow_counter_ips, now);
+  cms_periodic_cleanup(state->flow_counter_ports, now);
 }
 
 int nf_process(uint16_t device, uint8_t *pkt, uint32_t pkt_len, time_ns_t now) {
+  struct state_t *state = &RTE_PER_LCORE(state);
+
   expire_entries(now);
 
   struct tcpudp_hdrs_t hdrs = nf_get_tcpudp_hdrs(pkt, pkt_len);
@@ -87,9 +90,9 @@ int nf_process(uint16_t device, uint8_t *pkt, uint32_t pkt_len, time_ns_t now) {
       .dst_port = hdrs.tcpudp_hdr->dst_port,
   };
 
-  cms_increment(state.flow_counter_5tuple, &flow_5tuple);
-  cms_increment(state.flow_counter_ips, &flow_ips);
-  cms_increment(state.flow_counter_ports, &flow_ports);
+  cms_increment(state->flow_counter_5tuple, &flow_5tuple);
+  cms_increment(state->flow_counter_ips, &flow_ips);
+  cms_increment(state->flow_counter_ports, &flow_ports);
 
   if (device == LAN) {
     return WAN;

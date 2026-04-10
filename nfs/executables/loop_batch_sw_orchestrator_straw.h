@@ -2,14 +2,9 @@
 
 #include "boilerplate.h"
 
-#ifndef TRACK_STRIDE_SIZES
-#define TRACK_STRIDE_SIZES 0
-#endif
-
 #define RING_SIZE 16384 /* Must be a power of 2 */
 #define POOL_CACHE_SIZE 256
 
-#define ORCHESTRATOR_MAX_FLOWS 32
 #define ORCHESTRATOR_TELEMETRY_PHASE_PACKETS 10000000ll
 #define ORCHESTRATOR_CMS_HEIGHT 9
 #define ORCHESTRATOR_CMS_WIDTH 524288
@@ -32,11 +27,6 @@ struct flow_t {
   uint32_t dst_ip;
   uint16_t src_port;
   uint16_t dst_port;
-};
-
-struct pkt_tag_t {
-  uint8_t i;
-  struct flow_t id;
 };
 
 struct flow_t flow_from_pkt(uint8_t *pkt, uint32_t pkt_len) {
@@ -66,35 +56,6 @@ struct flow_t flow_from_pkt(uint8_t *pkt, uint32_t pkt_len) {
   id.dst_port = tcpudp_hdr->dst_port;
 
   return id;
-}
-
-bool pkt_tag_lt(struct pkt_tag_t *a, struct pkt_tag_t *b) {
-  if (a->id.src_ip != b->id.src_ip) {
-    return a->id.src_ip < b->id.src_ip;
-  }
-
-  if (a->id.dst_ip != b->id.dst_ip) {
-    return a->id.dst_ip < b->id.dst_ip;
-  }
-
-  if (a->id.src_port != b->id.src_port) {
-    return a->id.src_port < b->id.src_port;
-  }
-
-  return a->id.dst_port < b->id.dst_port;
-}
-
-void sort_tagged_packets(struct pkt_tag_t *pkts, uint16_t n) {
-  for (int i = 1; i < n; i++) {
-    struct pkt_tag_t curr = pkts[i];
-    int j                 = i - 1;
-
-    while (j >= 0 && pkt_tag_lt(pkts + j, &curr)) {
-      memcpy(pkts + j + 1, pkts + j, sizeof(struct pkt_tag_t));
-      j = j - 1;
-    }
-    memcpy(pkts + j + 1, &curr, sizeof(struct pkt_tag_t));
-  }
 }
 
 void generate_elephant_rule(struct flow_t *id, uint16_t rx_q) {
@@ -154,16 +115,10 @@ void orchestrator_loop() {
 
   unsigned nb_devices = rte_eth_dev_count_avail();
 
-  struct elephant_t {
-    struct flow_t id;
-    uint64_t weight;
-  };
-
   struct CMS *flow_counter = NULL;
-  uint64_t total_packets   = 0;
-
-  struct elephant_t elephants[ORCHESTRATOR_MAX_FLOWS];
-  memset(elephants, 0, sizeof(elephants));
+  struct flow_t heaviest_elephant;
+  uint64_t heaviest_elephant_weight = 0;
+  uint64_t total_packets            = 0;
 
   if (cms_allocate(ORCHESTRATOR_CMS_HEIGHT, ORCHESTRATOR_CMS_WIDTH, sizeof(struct flow_t), 0, &flow_counter) == 0) {
     rte_exit(EXIT_FAILURE, "Failed to allocate orchestrator Count-Min Sketch\n");
@@ -182,23 +137,9 @@ void orchestrator_loop() {
       struct flow_t *id = (struct flow_t *)dequeued_ptrs[i];
       cms_increment(flow_counter, id);
       uint64_t current_count = cms_count_min(flow_counter, id);
-
-      struct elephant_t *smallest_elephant = &elephants[0];
-      bool already_tracked                 = false;
-      for (int i = 0; i < ORCHESTRATOR_MAX_FLOWS; i++) {
-        if (memcmp(&elephants[i].id, id, sizeof(struct flow_t)) == 0) {
-          elephants[i].weight = current_count;
-          already_tracked     = true;
-          break;
-        }
-        if (elephants[i].weight < smallest_elephant->weight) {
-          smallest_elephant = &elephants[i];
-        }
-      }
-
-      if (!already_tracked && current_count > smallest_elephant->weight) {
-        smallest_elephant->id     = *id;
-        smallest_elephant->weight = current_count;
+      if (current_count > heaviest_elephant_weight) {
+        heaviest_elephant_weight = current_count;
+        heaviest_elephant        = *id;
       }
     }
 
@@ -215,23 +156,12 @@ void orchestrator_loop() {
 
   NF_INFO("Orchestrator finished processing 10 million packets.");
 
-  for (int i = 0; i < ORCHESTRATOR_MAX_FLOWS; i++) {
-    if (elephants[i].weight == 0) {
-      continue;
-    }
-    NF_INFO("Installing elephant rule: src_ip=%" PRIu32 ", dst_ip=%" PRIu32 ", src_port=%" PRIu16 ", dst_port=%" PRIu16
-            ", weight=%" PRIu64 " (%5.2f%%).",
-            elephants[i].id.src_ip, elephants[i].id.dst_ip, elephants[i].id.src_port, elephants[i].id.dst_port,
-            elephants[i].weight, (float)elephants[i].weight / total_packets * 100);
-    generate_elephant_rule(&elephants[i].id, ELEPHANT_QUEUE_ID);
-  }
+  NF_INFO("Installing elephant rule: src_ip=%" PRIu32 ", dst_ip=%" PRIu32 ", src_port=%" PRIu16 ", dst_port=%" PRIu16
+          ", weight=%" PRIu64 " (%5.2f%%).",
+          heaviest_elephant.src_ip, heaviest_elephant.dst_ip, heaviest_elephant.src_port, heaviest_elephant.dst_port,
+          heaviest_elephant_weight, (float)heaviest_elephant_weight / total_packets * 100);
 
-  uint64_t total_elephant_packets = 0;
-  for (int i = 0; i < ORCHESTRATOR_MAX_FLOWS; i++) {
-    total_elephant_packets += elephants[i].weight;
-  }
-  NF_INFO("Total elephant packets: %" PRIu64 " (%5.2f%% of total traffic).", total_elephant_packets,
-          (float)total_elephant_packets / total_packets * 100);
+  generate_elephant_rule(&heaviest_elephant, ELEPHANT_QUEUE_ID);
 
   orchestrator_done = 1;
 
@@ -263,7 +193,6 @@ void mice_worker_loop() {
       struct rte_mbuf *mbufs[BATCH_SIZE];
 
       uint16_t rx_count = rte_eth_rx_burst(device, queue_id, mbufs, BATCH_SIZE);
-
       for (uint16_t n = 0; n < rx_count; n++) {
         uint16_t src_device = mbufs[n]->port;
         uint8_t *pkt        = rte_pktmbuf_mtod(mbufs[n], uint8_t *);
@@ -306,19 +235,6 @@ void mice_worker_loop() {
   }
 }
 
-#if TRACK_STRIDE_SIZES
-uint64_t stride_sizes[BATCH_SIZE];
-void handle_sigint(int sig) {
-  printf("\nCaught signal %d (SIGINT). Cleaning up...\n", sig);
-
-  for (size_t i = 0; i < BATCH_SIZE; i++) {
-    printf("Stride size %zu: %lu packets\n", i + 1, stride_sizes[i]);
-  }
-
-  _exit(0);
-}
-#endif
-
 void elephant_worker_loop() {
   if (!nf_init()) {
     rte_exit(EXIT_FAILURE, "Error initializing NF");
@@ -346,71 +262,27 @@ void elephant_worker_loop() {
         continue;
       }
 
-      // NF_INFO("Received batch of %u packets on Elephant queue!", rx_count);
+      time_ns_t now       = current_time();
+      uint8_t *data       = rte_pktmbuf_mtod(mbufs[0], uint8_t *);
+      uint16_t dst_device = nf_process(mbufs[0]->port, data, mbufs[0]->pkt_len, now);
 
-      uint8_t *pkts[BATCH_SIZE];
-      uint32_t pkt_lens[BATCH_SIZE];
-      struct pkt_tag_t tagged_pkts[BATCH_SIZE];
-
-      for (uint16_t n = 0; n < rx_count; n++) {
-        pkts[n]           = rte_pktmbuf_mtod(mbufs[n], uint8_t *);
-        pkt_lens[n]       = mbufs[n]->pkt_len;
-        tagged_pkts[n].i  = n;
-        tagged_pkts[n].id = flow_from_pkt(pkts[n], pkt_lens[n]);
-      }
-
-      sort_tagged_packets(tagged_pkts, rx_count);
-
-      uint8_t current_batch = 0;
-
-      uint8_t strides[BATCH_SIZE];
-      for (uint8_t i = 0; i < BATCH_SIZE; i++) {
-        strides[i] = 1;
-      }
-
-      for (uint16_t n = 0; n < rx_count - 1; n++) {
-        if (memcmp(&tagged_pkts[n].id, &tagged_pkts[n + 1].id, sizeof(struct flow_t)) == 0) {
-          strides[current_batch]++;
-        } else {
-          current_batch++;
+      if (dst_device == DROP) {
+        for (uint16_t n = 0; n < rx_count; n++) {
+          rte_pktmbuf_free(tx_batch_per_port[dst_device].batch[n]);
         }
-      }
-
-      time_ns_t now = current_time();
-
-      current_batch = 0;
-      for (uint16_t n = 0; n < rx_count; current_batch++) {
-#if TRACK_STRIDE_SIZES
-        stride_sizes[strides[current_batch] - 1]++;
-#endif
-
-        uint8_t i           = tagged_pkts[n].i;
-        uint8_t *pkt        = pkts[i];
-        uint32_t pkt_len    = pkt_lens[i];
-        uint16_t src_device = mbufs[i]->port;
-
-        uint16_t dst_device = nf_process(src_device, pkt, pkt_len, now);
-
-        if (dst_device == DROP) {
-          for (uint8_t stride_size = 0; stride_size < strides[current_batch]; stride_size++) {
-            rte_pktmbuf_free(mbufs[tagged_pkts[n + stride_size].i]);
-          }
-        } else {
-          for (uint8_t stride_size = 0; stride_size < strides[current_batch]; stride_size++) {
-            uint16_t tx_count                             = tx_batch_per_port[dst_device].tx_count;
-            tx_batch_per_port[dst_device].batch[tx_count] = mbufs[tagged_pkts[n + stride_size].i];
-            tx_batch_per_port[dst_device].tx_count++;
-          }
+      } else {
+        for (uint16_t n = 0; n < rx_count; n++) {
+          uint16_t tx_count                             = tx_batch_per_port[dst_device].tx_count;
+          tx_batch_per_port[dst_device].batch[tx_count] = mbufs[n];
+          tx_batch_per_port[dst_device].tx_count++;
         }
-
-        n += strides[current_batch];
       }
 
       for (uint16_t dst_device = 0; dst_device < devices_count; dst_device++) {
         uint16_t sent_count = rte_eth_tx_burst(dst_device, queue_id, tx_batch_per_port[dst_device].batch,
                                                tx_batch_per_port[dst_device].tx_count);
         for (uint16_t n = sent_count; n < tx_batch_per_port[dst_device].tx_count; n++) {
-          rte_pktmbuf_free(mbufs[tagged_pkts[n].i]);
+          rte_pktmbuf_free(tx_batch_per_port[dst_device].batch[n]);
         }
         tx_batch_per_port[dst_device].tx_count = 0;
       }
@@ -525,11 +397,6 @@ int nf_setup(int argc, char **argv) {
 
   flow_feedback_ring = rte_ring_create("FLOW_FEEDBACK_RING", RING_SIZE, rte_socket_id(),
                                        RING_F_SC_DEQ); // Multi-Producer, Single-Consumer
-
-#if TRACK_STRIDE_SIZES
-  memset(stride_sizes, 0, sizeof(stride_sizes));
-  signal(SIGINT, handle_sigint);
-#endif
 
   return 0;
 }

@@ -1,10 +1,5 @@
 #include "loop_batch_straw.h"
 
-#define MAX_FLOWS 65536
-#define EXPIRATION_TIME_NS 1000000000 // 1 seconds
-#define LAN 0
-#define WAN 1
-
 int main(int argc, char **argv) {
   nf_setup(argc, argv);
   worker_loop();

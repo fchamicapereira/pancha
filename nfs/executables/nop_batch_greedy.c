@@ -2,11 +2,6 @@
 
 #include "loop_batch_greedy.h"
 
-#define LAN 0
-#define WAN 1
-
-bool flow_match(uint8_t *pkt0, uint32_t pkt_len0, uint8_t *pkt1, uint32_t pkt_len1) { return true; }
-
 int main(int argc, char **argv) {
   nf_setup(argc, argv);
   worker_loop();

@@ -188,7 +188,7 @@ static inline void worker_loop() {
     for (uint16_t device = 0; device < devices_count; device++) {
       struct rte_mbuf *mbufs[BATCH_SIZE];
 
-      uint16_t rx_count = rte_eth_rx_burst(device, 0, mbufs + rx_count, BATCH_SIZE);
+      uint16_t rx_count = rte_eth_rx_burst(device, 0, mbufs, BATCH_SIZE);
 
       uint8_t *pkts[BATCH_SIZE];
       uint32_t pkt_lens[BATCH_SIZE];

@@ -35,7 +35,7 @@ struct flow_t {
 };
 
 struct pkt_tag_t {
-  uint8_t i;
+  uint8_t processed;
   struct flow_t id;
 };
 
@@ -66,35 +66,6 @@ struct flow_t flow_from_pkt(uint8_t *pkt, uint32_t pkt_len) {
   id.dst_port = tcpudp_hdr->dst_port;
 
   return id;
-}
-
-bool pkt_tag_lt(struct pkt_tag_t *a, struct pkt_tag_t *b) {
-  if (a->id.src_ip != b->id.src_ip) {
-    return a->id.src_ip < b->id.src_ip;
-  }
-
-  if (a->id.dst_ip != b->id.dst_ip) {
-    return a->id.dst_ip < b->id.dst_ip;
-  }
-
-  if (a->id.src_port != b->id.src_port) {
-    return a->id.src_port < b->id.src_port;
-  }
-
-  return a->id.dst_port < b->id.dst_port;
-}
-
-void sort_tagged_packets(struct pkt_tag_t *pkts, uint16_t n) {
-  for (int i = 1; i < n; i++) {
-    struct pkt_tag_t curr = pkts[i];
-    int j                 = i - 1;
-
-    while (j >= 0 && pkt_tag_lt(pkts + j, &curr)) {
-      memcpy(pkts + j + 1, pkts + j, sizeof(struct pkt_tag_t));
-      j = j - 1;
-    }
-    memcpy(pkts + j + 1, &curr, sizeof(struct pkt_tag_t));
-  }
 }
 
 void generate_elephant_rule(struct flow_t *id, uint16_t rx_q) {
@@ -346,73 +317,48 @@ void elephant_worker_loop() {
         continue;
       }
 
-      // NF_INFO("Received batch of %u packets on Elephant queue!", rx_count);
-
       uint8_t *pkts[BATCH_SIZE];
       uint32_t pkt_lens[BATCH_SIZE];
       struct pkt_tag_t tagged_pkts[BATCH_SIZE];
 
       for (uint16_t n = 0; n < rx_count; n++) {
-        pkts[n]           = rte_pktmbuf_mtod(mbufs[n], uint8_t *);
-        pkt_lens[n]       = mbufs[n]->pkt_len;
-        tagged_pkts[n].i  = n;
-        tagged_pkts[n].id = flow_from_pkt(pkts[n], pkt_lens[n]);
+        pkts[n]                  = rte_pktmbuf_mtod(mbufs[n], uint8_t *);
+        pkt_lens[n]              = mbufs[n]->pkt_len;
+        tagged_pkts[n].processed = 0;
+        tagged_pkts[n].id        = flow_from_pkt(pkts[n], pkt_lens[n]);
       }
 
-      sort_tagged_packets(tagged_pkts, rx_count);
-
-      uint8_t current_batch = 0;
-
-      uint8_t strides[BATCH_SIZE];
-      for (uint8_t i = 0; i < BATCH_SIZE; i++) {
-        strides[i] = 1;
-      }
-
-      for (uint16_t n = 0; n < rx_count - 1; n++) {
-        if (memcmp(&tagged_pkts[n].id, &tagged_pkts[n + 1].id, sizeof(struct flow_t)) == 0) {
-          strides[current_batch]++;
-        } else {
-          current_batch++;
+      for (uint16_t n = 0; n < rx_count; n++) {
+        if (tagged_pkts[n].processed) {
+          continue;
         }
-      }
 
-      time_ns_t now = current_time();
-
-      current_batch = 0;
-      for (uint16_t n = 0; n < rx_count; current_batch++) {
-#if TRACK_STRIDE_SIZES
-        stride_sizes[strides[current_batch] - 1]++;
-#endif
-
-        uint8_t i           = tagged_pkts[n].i;
-        uint8_t *pkt        = pkts[i];
-        uint32_t pkt_len    = pkt_lens[i];
-        uint16_t src_device = mbufs[i]->port;
-
-        uint16_t dst_device = nf_process(src_device, pkt, pkt_len, now);
+        time_ns_t now       = current_time();
+        uint16_t dst_device = nf_process(device, pkts[n], pkt_lens[n], now);
 
         if (dst_device == DROP) {
-          for (uint8_t stride_size = 0; stride_size < strides[current_batch]; stride_size++) {
-            rte_pktmbuf_free(mbufs[tagged_pkts[n + stride_size].i]);
-          }
+          rte_pktmbuf_free(mbufs[n]);
         } else {
-          for (uint8_t stride_size = 0; stride_size < strides[current_batch]; stride_size++) {
-            uint16_t tx_count                             = tx_batch_per_port[dst_device].tx_count;
-            tx_batch_per_port[dst_device].batch[tx_count] = mbufs[tagged_pkts[n + stride_size].i];
-            tx_batch_per_port[dst_device].tx_count++;
+          uint16_t tx_count                             = tx_batch_per_port[dst_device].tx_count;
+          tx_batch_per_port[dst_device].batch[tx_count] = mbufs[n];
+          tx_batch_per_port[dst_device].tx_count++;
+        }
+
+        uint8_t logical_batch_size = 0;
+        for (uint16_t i = n + 1; i < rx_count; i++) {
+          if (memcmp(&tagged_pkts[n].id, &tagged_pkts[i].id, sizeof(struct flow_t)) == 0) {
+            tagged_pkts[i].processed = 1;
+            logical_batch_size++;
+
+            if (dst_device == DROP) {
+              rte_pktmbuf_free(mbufs[i]);
+            } else {
+              uint16_t tx_count                             = tx_batch_per_port[dst_device].tx_count;
+              tx_batch_per_port[dst_device].batch[tx_count] = mbufs[i];
+              tx_batch_per_port[dst_device].tx_count++;
+            }
           }
         }
-
-        n += strides[current_batch];
-      }
-
-      for (uint16_t dst_device = 0; dst_device < devices_count; dst_device++) {
-        uint16_t sent_count = rte_eth_tx_burst(dst_device, queue_id, tx_batch_per_port[dst_device].batch,
-                                               tx_batch_per_port[dst_device].tx_count);
-        for (uint16_t n = sent_count; n < tx_batch_per_port[dst_device].tx_count; n++) {
-          rte_pktmbuf_free(mbufs[tagged_pkts[n].i]);
-        }
-        tx_batch_per_port[dst_device].tx_count = 0;
       }
     }
   }

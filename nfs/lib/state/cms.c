@@ -88,8 +88,8 @@ void cms_increment(struct CMS *cms, void *key) {
   }
 }
 
-int cms_count_min(struct CMS *cms, void *key) {
-  int min_val = INT32_MAX;
+uint64_t cms_count_min(struct CMS *cms, void *key) {
+  uint64_t min_val = INT64_MAX;
 
   for (uint32_t h = 0; h < cms->height; h++) {
     unsigned hash   = __builtin_ia32_crc32si(CMS_SALTS[h], hash_obj(key, cms->key_size));

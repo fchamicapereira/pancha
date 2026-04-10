@@ -2,14 +2,9 @@
 
 #include "loop_batch_sw_orchestrator_sorted.h"
 
-#define MAX_FLOWS 65536
-#define EXPIRATION_TIME_NS 1000000000 // 1 seconds
 #define SKETCH_WIDTH 65536
 #define SKETCH_HEIGHT 7
 #define MAX_CLIENTS 65536
-
-#define LAN 0
-#define WAN 1
 
 int main(int argc, char **argv) {
   nf_setup(argc, argv);

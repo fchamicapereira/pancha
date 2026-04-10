@@ -2,9 +2,6 @@
 
 #include "loop_batch_sorted.h"
 
-#define LAN 0
-#define WAN 1
-
 int main(int argc, char **argv) {
   nf_setup(argc, argv);
   worker_loop();

@@ -118,8 +118,7 @@ static inline void worker_loop() {
         uint16_t sent_count = rte_eth_tx_burst(dst_device, 0, tx_batch_per_port[dst_device].batch,
                                                tx_batch_per_port[dst_device].tx_count);
         for (uint16_t n = sent_count; n < tx_batch_per_port[dst_device].tx_count; n++) {
-          rte_pktmbuf_free(mbufs[n]); // should not happen, but we're in
-                                      // the unverified case anyway
+          rte_pktmbuf_free(tx_batch_per_port[dst_device].batch[n]);
         }
         tx_batch_per_port[dst_device].tx_count = 0;
       }

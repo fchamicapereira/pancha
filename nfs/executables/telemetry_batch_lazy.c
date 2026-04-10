@@ -1,6 +1,6 @@
 #define TRACK_STRIDE_SIZES 0
 
-#include "loop_batch_sorted.h"
+#include "loop_batch_lazy.h"
 
 #define SKETCH_WIDTH 65536
 #define SKETCH_HEIGHT 7
@@ -20,6 +20,13 @@ struct state_t {
 
 struct state_t state;
 
+struct flow_5tuple_t {
+  uint32_t src_ip;
+  uint32_t dst_ip;
+  uint16_t src_port;
+  uint16_t dst_port;
+};
+
 struct flow_ips_t {
   uint32_t src_ip;
   uint32_t dst_ip;
@@ -31,7 +38,7 @@ struct flow_ports_t {
 };
 
 bool nf_init(void) {
-  if (cms_allocate(SKETCH_HEIGHT, SKETCH_WIDTH, sizeof(struct flow_t), EXPIRATION_TIME_NS,
+  if (cms_allocate(SKETCH_HEIGHT, SKETCH_WIDTH, sizeof(struct flow_5tuple_t), EXPIRATION_TIME_NS,
                    &(state.flow_counter_5tuple)) == 0) {
     return false;
   }
@@ -70,7 +77,7 @@ int nf_process(uint16_t device, uint8_t *pkt, uint32_t pkt_len, time_ns_t now) {
     return DROP;
   }
 
-  struct flow_t flow_5tuple = {
+  struct flow_5tuple_t flow_5tuple = {
       .src_ip   = hdrs.ipv4_hdr->src_addr,
       .dst_ip   = hdrs.ipv4_hdr->dst_addr,
       .src_port = hdrs.tcpudp_hdr->src_port,

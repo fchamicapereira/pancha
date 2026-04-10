@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
 
-from dataclasses import dataclass
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-import random
-import os
-import statistics
 
 SCRIPT_DIR = Path(__file__).parent.absolute()
 OUT_DIR = SCRIPT_DIR / "plots"
@@ -14,295 +10,621 @@ OUT_DIR = SCRIPT_DIR / "plots"
 # FIG_FORMAT = "pdf"
 FIG_FORMAT = "png"
 
-def plot_preliminary_1flow(exp_name: str):
-    out_file = OUT_DIR / f"{exp_name}.{FIG_FORMAT}"
+
+def plot_1flow():
+    out_file = OUT_DIR / f"tput_uniform_1_flow.{FIG_FORMAT}"
     print(f"Plotting to {out_file}...")
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    _, ax = plt.subplots(figsize=(10, 6))
 
-    nfs = [
-        'nop', 'batched\nnop\nstraw', 'batched\nnop\ngreedy',
-        'fw', 'batched\nfw\nstraw', 'batched\nfw\ngreedy',
-        'telemetry', 'batched\ntelemetry\nstraw', 'batched\ntelemetry\ngreedy'
-    ]
-    mpps = [
-        29, 33, 33,
-        13, 33, 33,
-        4, 33, 33
+    data = [
+        ("nop", 30),
+        ("batched\nnop\nstraw", 31),
+        ("batched\nnop\ngreedy", 31),
+        ("fw", 13),
+        ("batched\nfw\nstraw", 31),
+        ("batched\nfw\ngreedy", 31),
+        ("telemetry", 5),
+        ("batched\ntelemetry\nstraw", 31),
+        ("batched\ntelemetry\ngreedy", 31),
     ]
 
     colors = [
-        '#19B2FF', '#19B2FF', '#19B2FF',
-        '#FF7F00', '#FF7F00', '#FF7F00',
-        '#654CFF', '#654CFF', '#654CFF'
+        "#19B2FF",
+        "#19B2FF",
+        "#19B2FF",
+        "#FF7F00",
+        "#FF7F00",
+        "#FF7F00",
+        "#654CFF",
+        "#654CFF",
+        "#654CFF",
     ]
+
+    nfs = [d[0] for d in data]
+    mpps = [d[1] for d in data]
 
     bars = ax.bar(nfs, mpps, color=colors)
     ax.bar_label(bars, padding=3)
 
-    ax.set_ylabel('Throughput (Mpps)')
-    ax.set_title('Stride processing: 1 flow, 1 core, 0 churn')
+    ax.set_ylabel("Throughput (Mpps)")
+    ax.set_title("Stride processing: 1 flow, 1 core, 0 churn")
+
+    ax.set_ylim(0, 35)
 
     plt.tight_layout()
     plt.savefig(out_file, dpi=300)
     plt.close()
 
-# s = 1.5, 40k flows, 1 core, 0 churn
-def plot_preliminary_zipfian(exp_name: str):
-    out_file = OUT_DIR / f"{exp_name}.{FIG_FORMAT}"
+
+def plot_zipfian_s1_5():
+    out_file = OUT_DIR / f"tput_zipfian_s1_5_40k_flows.{FIG_FORMAT}"
     print(f"Plotting to {out_file}...")
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    _, ax = plt.subplots(figsize=(10, 6))
 
-    nfs = [
-        'nop', 'batched\nnop\ngreedy', 'batched\nnop\nsorted',
-        'fw', 'batched\nfw\ngreedy', 'batched\nfw\nsorted',
-        'telemetry', 'batched\ntelemetry\ngreedy', 'batched\ntelemetry\nsorted',
+    data = [
+        ("nop", 30),
+        ("batched\nnop\ngreedy", 33),
+        ("batched\nnop\nsorted", 23),
+        ("fw", 12),
+        ("batched\nfw\ngreedy", 19),
+        ("batched\nfw\nsorted", 17),
+        ("telemetry", 4),
+        ("batched\ntelemetry\ngreedy", 6),
+        ("batched\ntelemetry\nsorted", 8),
     ]
 
-    mpps = [
-        30, 33, 23,
-        10, 15, 13,
-        4, 5, 7,
-    ]
+    nfs = [d[0] for d in data]
+    mpps = [d[1] for d in data]
 
     colors = [
-        '#19B2FF', '#19B2FF', '#19B2FF',
-        '#FF7F00', '#FF7F00', '#FF7F00',
-        '#654CFF', '#654CFF', '#654CFF'
+        "#19B2FF",
+        "#19B2FF",
+        "#19B2FF",
+        "#FF7F00",
+        "#FF7F00",
+        "#FF7F00",
+        "#654CFF",
+        "#654CFF",
+        "#654CFF",
     ]
 
     bars = ax.bar(nfs, mpps, color=colors)
     ax.bar_label(bars, padding=3)
 
-    ax.set_ylabel('Throughput (Mpps)')
-    ax.set_title('Stride processing: s=1.5, 40k flows, 1 core, 0 churn')
+    ax.set_ylabel("Throughput (Mpps)")
+    ax.set_title("Stride processing: s=1.5, 40k flows, 1 core, 0 churn")
+
+    ax.set_ylim(0, 35)
 
     plt.tight_layout()
     plt.savefig(out_file, dpi=300)
     plt.close()
 
-def plot_preliminary_imc_univ2(exp_name: str):
-    out_file = OUT_DIR / f"{exp_name}.{FIG_FORMAT}"
+
+def plot_zipfian_s1_26():
+    out_file = OUT_DIR / f"tput_zipfian_s1_26_40k_flows.{FIG_FORMAT}"
     print(f"Plotting to {out_file}...")
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    _, ax = plt.subplots(figsize=(10, 6))
 
-    nfs = [
-        'nop', 'batched\nnop\ngreedy', 'batched\nnop\nsorted',
-        'fw', 'batched\nfw\ngreedy', 'batched\nfw\nsorted',
-        'telemetry', 'batched\ntelemetry\ngreedy', 'batched\ntelemetry\nsorted',
+    data = [
+        ("nop", 30),
+        ("batched\nnop\ngreedy", 33),
+        ("batched\nnop\nsorted", 23),
+        ("fw", 12),
+        ("batched\nfw\ngreedy", 17),
+        ("batched\nfw\nsorted", 14),
+        ("telemetry", 4),
+        ("batched\ntelemetry\ngreedy", 5),
+        ("batched\ntelemetry\nsorted", 6),
     ]
 
-    mpps = [
-        30, 32, 22,
-        -1, -1, -1,
-        -1, -1, -1,
-    ]
+    nfs = [d[0] for d in data]
+    mpps = [d[1] for d in data]
 
     colors = [
-        '#19B2FF', '#19B2FF', '#19B2FF',
-        '#FF7F00', '#FF7F00', '#FF7F00',
-        '#654CFF', '#654CFF', '#654CFF'
+        "#19B2FF",
+        "#19B2FF",
+        "#19B2FF",
+        "#FF7F00",
+        "#FF7F00",
+        "#FF7F00",
+        "#654CFF",
+        "#654CFF",
+        "#654CFF",
     ]
 
     bars = ax.bar(nfs, mpps, color=colors)
     ax.bar_label(bars, padding=3)
 
-    ax.set_ylabel('Throughput (Mpps)')
-    ax.set_title('Stride processing: s=1.5, 40k flows, 1 core, 0 churn')
+    ax.set_ylabel("Throughput (Mpps)")
+    ax.set_title("Stride processing: s=1.26, 40k flows, 1 core, 0 churn")
+
+    ax.set_ylim(0, 35)
 
     plt.tight_layout()
     plt.savefig(out_file, dpi=300)
     plt.close()
 
-# s = 1.5, 40k flows, 2 core, 0 churn
-def plot_orchestrator_zipfian(exp_name: str):
-    out_file = OUT_DIR / f"{exp_name}.{FIG_FORMAT}"
+
+def plot_imc_univ2():
+    out_file = OUT_DIR / f"tput_imc_univ2.{FIG_FORMAT}"
     print(f"Plotting to {out_file}...")
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    _, ax = plt.subplots(figsize=(10, 6))
 
-    nfs = [
-        'fw\n1c', 'fw\nshared\nnothing\n2c', 'fw\ne+m\ngreedy', 'fw\ne+m\nsorted',
-        'telemetry\n1c', 'telemetry\nshared\nnothing\n2c', 'telemetry\ne+m\ngreedy', 'telemetry\ne+m\nsorted',
+    data = [
+        ("nop", 30),
+        ("batched\nnop\ngreedy", 32),
+        ("batched\nnop\nsorted", 22),
+        ("fw", 12),
+        ("batched\nfw\ngreedy", 18),
+        ("batched\nfw\nsorted", 14),
+        ("telemetry", 5),
+        ("batched\ntelemetry\ngreedy", 5),
+        ("batched\ntelemetry\nsorted", 5),
     ]
 
-    mpps = [
-        10, 8, 19, 18,
-        4, 5, 4, 4,
-    ]
+    nfs = [d[0] for d in data]
+    mpps = [d[1] for d in data]
 
     colors = [
-        '#19B2FF', '#19B2FF', '#19B2FF', '#19B2FF',
-        '#FF7F00', '#FF7F00', '#FF7F00', '#FF7F00',
+        "#19B2FF",
+        "#19B2FF",
+        "#19B2FF",
+        "#FF7F00",
+        "#FF7F00",
+        "#FF7F00",
+        "#654CFF",
+        "#654CFF",
+        "#654CFF",
     ]
 
     bars = ax.bar(nfs, mpps, color=colors)
     ax.bar_label(bars, padding=3)
 
-    ax.set_ylabel('Throughput (Mpps)')
-    ax.set_title('Stride processing: s=1.5, 40k flows, 1 core, 0 churn')
+    ax.set_ylabel("Throughput (Mpps)")
+    ax.set_title("Stride processing: IMC Univ2, 1 core, 0 churn")
+
+    ax.set_ylim(0, 35)
 
     plt.tight_layout()
     plt.savefig(out_file, dpi=300)
     plt.close()
 
-def plot_orchestrator_imc_univ2(exp_name: str):
-    out_file = OUT_DIR / f"{exp_name}.{FIG_FORMAT}"
+
+def plot_orchestrator_zipfian_1_5():
+    out_file = OUT_DIR / f"tput_orchestrator_zipfian_s1_5_40k_flows.{FIG_FORMAT}"
     print(f"Plotting to {out_file}...")
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    _, ax = plt.subplots(figsize=(10, 6))
 
-    nfs = [
-        'fw\n1c', 'fw\nshared\nnothing\n2c', 'fw\ne+m\ngreedy', 'fw\ne+m\nsorted',
-        'telemetry\n1c', 'telemetry\nshared\nnothing\n2c', 'telemetry\ne+m\ngreedy', 'telemetry\ne+m\nsorted',
+    data = [
+        ("fw\n1c", 12),
+        ("fw\nshared\nnothing\n2c", 15),
+        ("fw\ne+m\nstraw\n(1f,39%)", 18),
+        ("fw\ne+m\ngreedy\n(8f,75%)", 29),
+        ("fw\ne+m\nsorted\n(8f,75%)", 29),
+        ("telemetry\n1c", 4),
+        ("telemetry\nshared\nnothing\n2c", 6),
+        ("telemetry\ne+m\nstraw\n(1f,39%)", 7),
+        ("telemetry\ne+m\ngreedy\n(8f,75%)", 11),
+        ("telemetry\ne+m\nsorted\n(8f,75%)", 8),
     ]
 
-    mpps = [
-        10, 8, 19, 18,
-        4, -1, 4, 4,
-    ]
+    nfs = [d[0] for d in data]
+    mpps = [d[1] for d in data]
 
     colors = [
-        '#19B2FF', '#19B2FF', '#19B2FF',
-        '#FF7F00', '#FF7F00', '#FF7F00',
-        '#654CFF', '#654CFF', '#654CFF'
+        "#FF7F00",
+        "#FF7F00",
+        "#FF7F00",
+        "#FF7F00",
+        "#FF7F00",
+        "#654CFF",
+        "#654CFF",
+        "#654CFF",
+        "#654CFF",
+        "#654CFF",
     ]
 
     bars = ax.bar(nfs, mpps, color=colors)
     ax.bar_label(bars, padding=3)
 
-    ax.set_ylabel('Throughput (Mpps)')
-    ax.set_title('Stride processing: s=1.5, 40k flows, 1 core, 0 churn')
+    ax.set_ylabel("Throughput (Mpps)")
+    ax.set_title("Stride processing: s=1.5, 40k flows, 1 core, 0 churn")
+
+    ax.set_ylim(0, 35)
 
     plt.tight_layout()
     plt.savefig(out_file, dpi=300)
     plt.close()
 
-# s = 1.5, 40k flows, 1 core, 0 churn
-def plot_fw_zipfian_greedy_stride_sizes(exp_name: str):
+
+def plot_orchestrator_zipfian_1_26():
+    out_file = OUT_DIR / f"tput_orchestrator_zipfian_s1_26_40k_flows.{FIG_FORMAT}"
+    print(f"Plotting to {out_file}...")
+
+    _, ax = plt.subplots(figsize=(10, 6))
+
+    data = [
+        ("fw\n1c", 12),
+        ("fw\nshared\nnothing\n2c", 16),
+        ("fw\ne+m\nstraw\n(1f,24%)", 15),
+        ("fw\ne+m\ngreedy\n(32f,69%)", 29),
+        ("fw\ne+m\nsorted\n(32f,69%)", 26),
+        ("telemetry\n1c", 4),
+        ("telemetry\nshared\nnothing\n2c", 7),
+        ("telemetry\ne+m\nstraw\n(1f,24%)", 5),
+        ("telemetry\ne+m\ngreedy\n(32f,69%)", 9),
+        ("telemetry\ne+m\nsorted\n(32f,69%)", 9),
+    ]
+
+    nfs = [d[0] for d in data]
+    mpps = [d[1] for d in data]
+
+    colors = [
+        "#FF7F00",
+        "#FF7F00",
+        "#FF7F00",
+        "#FF7F00",
+        "#FF7F00",
+        "#654CFF",
+        "#654CFF",
+        "#654CFF",
+        "#654CFF",
+        "#654CFF",
+    ]
+
+    bars = ax.bar(nfs, mpps, color=colors)
+    ax.bar_label(bars, padding=3)
+
+    ax.set_ylabel("Throughput (Mpps)")
+    ax.set_title("Stride processing: s=1.26, 40k flows, 1 core, 0 churn")
+
+    ax.set_ylim(0, 35)
+
+    plt.tight_layout()
+    plt.savefig(out_file, dpi=300)
+    plt.close()
+
+
+def plot_orchestrator_imc_univ2():
+    out_file = OUT_DIR / f"tput_orchestrator_imc_univ2.{FIG_FORMAT}"
+    print(f"Plotting to {out_file}...")
+
+    _, ax = plt.subplots(figsize=(10, 6))
+
+    data = [
+        ("fw\n1c", 12),
+        ("fw\nshared\nnothing\n2c", 14),
+        ("fw\ne+m\nstraw\n(1f,15%)", 12),
+        ("fw\ne+m\ngreedy\n(16f,58%)", 13),
+        ("fw\ne+m\nsorted\n(16f,58%)", 13),
+        ("telemetry\n1c", 5),
+        ("telemetry\nshared\nnothing\n2c", 5),
+        ("telemetry\ne+m\nstraw\n(1f,15%)", 5),
+        ("telemetry\ne+m\ngreedy\n(8f,45%)", 5),
+        ("telemetry\ne+m\nsorted\n(8f,45%)", 5),
+    ]
+
+    nfs = [d[0] for d in data]
+    mpps = [d[1] for d in data]
+
+    colors = [
+        "#FF7F00",
+        "#FF7F00",
+        "#FF7F00",
+        "#FF7F00",
+        "#FF7F00",
+        "#654CFF",
+        "#654CFF",
+        "#654CFF",
+        "#654CFF",
+        "#654CFF",
+    ]
+
+    bars = ax.bar(nfs, mpps, color=colors)
+    ax.bar_label(bars, padding=3)
+
+    ax.set_ylabel("Throughput (Mpps)")
+    ax.set_title("Stride processing: IMC Univ2, 1 core, 0 churn")
+
+    ax.set_ylim(0, 35)
+
+    plt.tight_layout()
+    plt.savefig(out_file, dpi=300)
+    plt.close()
+
+
+def plot_strides_sizes(exp_name: str, fname: str, stride_sizes: list[int]):
+    out_file = OUT_DIR / f"{fname}.{FIG_FORMAT}"
+    print(f"Plotting to {out_file}...")
+
+    _, ax = plt.subplots()
+
+    strides = [i + 1 for i in range(len(stride_sizes))]
+    rel = [100.0 * s / sum(stride_sizes) for s in stride_sizes]
+
+    ax.bar(strides, rel)
+
+    # Let's use log scale for the y axis, but we need to set the ticks manually to show the percentages.
+    ax.set_yscale("log")
+    ax.set_yticks([0.01, 0.1, 1, 10, 100])
+    ax.set_yticklabels(["0.01", "0.1", "1", "10", "100"])
+    ax.set_ylim(0.005, 100)
+
+    ax.set_xticks([x for x in strides if x % 2 == 0])
+    # ax.set_yticks(list(range(0, 101, 10)))
+
+    ax.set_ylabel("Relative Size (%)")
+    ax.set_title(exp_name)
+
+    plt.tight_layout()
+    plt.savefig(out_file, dpi=300)
+    plt.close()
+
+
+def plot_strides_sizes_zipfian_s1_26_greedy():
+    title = "Greedy stride sizes: s=1.26, 40k flows, 1 core, 0 churn"
+    fname = "stride_sizes_zipfian_s1_26_unsorted"
     stride_sizes = [
-        167019991,
-        6935419,
-        995842,
-        175275,
-        32163,
-        6167,
-        1245,
-        252,
-        37,
-        23,
-        0,
-        0,
+        1359304147,
+        75167187,
+        13208882,
+        2818944,
+        620694,
+        140240,
+        31382,
+        6956,
+        1601,
+        294,
+        101,
+        45,
+        7,
         1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    ]
+
+    plot_strides_sizes(title, fname, stride_sizes)
+
+
+def plot_strides_sizes_zipfian_s1_26_sorted():
+    title = "Sorted stride sizes: s=1.26, 40k flows, 1 core, 0 churn"
+    fname = "stride_sizes_zipfian_s1_26_sorted"
+    stride_sizes = [
+        670250008,
+        75632309,
+        29850925,
+        16037228,
+        10608595,
+        8614899,
+        7792855,
+        6903790,
+        5540669,
+        3918150,
+        2431624,
+        1323803,
+        634361,
+        267563,
+        99664,
+        32889,
+        9769,
+        2519,
+        606,
+        105,
+        33,
+        2,
         1,
         0,
         0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    ]
+    plot_strides_sizes(title, fname, stride_sizes)
+
+
+def plot_strides_sizes_zipfian_s1_5_greedy():
+    title = "Greedy stride sizes: s=1.5, 40k flows, 1 core, 0 churn"
+    fname = "stride_sizes_zipfian_s1_5_unsorted"
+    stride_sizes = [
+        1378385121,
+        155109397,
+        45595822,
+        15954249,
+        5830202,
+        2165485,
+        803290,
+        302050,
+        111577,
+        41462,
+        15505,
+        5601,
+        2076,
+        708,
+        241,
+        96,
+        20,
+        9,
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    ]
+
+    plot_strides_sizes(title, fname, stride_sizes)
+
+
+def plot_strides_sizes_zipfian_s1_5_sorted():
+    title = "Sorted stride sizes: s=1.5, 40k flows, 1 core, 0 churn"
+    fname = "stride_sizes_zipfian_s1_5_sorted"
+    stride_sizes = [
+        469586484,
+        78959290,
+        35200849,
+        20339336,
+        12685672,
+        7913637,
+        5147506,
+        4117200,
+        4399029,
+        5381710,
+        6376813,
+        6857708,
+        6573702,
+        5580711,
+        4204590,
+        2811652,
+        1666218,
+        874905,
+        407260,
+        167387,
+        60822,
+        18809,
+        5320,
+        1241,
+        228,
+        33,
         3,
         0,
         0,
-        1,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
         0,
         0,
         0,
     ]
+    plot_strides_sizes(title, fname, stride_sizes)
 
-    out_file = OUT_DIR / f"{exp_name}.{FIG_FORMAT}"
-    print(f"Plotting to {out_file}...")
 
-    fig, ax = plt.subplots()
-
-    strides = [ i+1 for i in range(len(stride_sizes)) ]
-    rel_stride_sizes = [ 100.0 * s/sum(stride_sizes) for s in stride_sizes ]
-
-    ax.bar(strides, rel_stride_sizes)
-
-    ax.set_xticks([ x for x in strides if x % 2 == 0 ])
-    ax.set_ylim(0, 100)
-
-    ax.set_ylabel('Relative Size (%)')
-    ax.set_title('FW greedy stride sizes: s=1.5, 40k flows, 1 core, 0 churn')
-
-    plt.tight_layout()
-    plt.savefig(out_file, dpi=300)
-    plt.close()
-
-# s = 1.5, 40k flows, 1 core, 0 churn
-def plot_fw_zipfian_sorted_stride_sizes(exp_name: str):
+def plot_strides_sizes_imc_univ2_greedy():
+    title = "Greedy stride sizes: IMC Univ2 1 core, 0 churn"
+    fname = "stride_sizes_imc_univ2_unsorted"
     stride_sizes = [
-        109440146,
-        10522647,
-        4015231,
-        2224391,
-        1558064,
-        1235186,
-        972768,
-        698027,
-        445190,
-        247793,
-        120394,
-        51714,
-        19505,
-        6440,
-        1850,
-        510,
-        118,
-        18,
-        8,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
+        809273943,
+        206024326,
+        61454398,
+        35664971,
+        12831274,
+        8132180,
+        5106111,
+        5446363,
+        2501762,
+        1788494,
+        1173443,
+        838122,
+        619271,
+        387616,
+        273031,
+        272320,
+        121518,
+        91302,
+        63731,
+        56163,
+        35781,
+        28643,
+        21196,
+        26825,
+        12118,
+        10305,
+        8014,
+        10435,
+        5905,
+        5720,
+        4278,
+        50896,
     ]
 
-    out_file = OUT_DIR / f"{exp_name}.{FIG_FORMAT}"
-    print(f"Plotting to {out_file}...")
+    plot_strides_sizes(title, fname, stride_sizes)
 
-    fig, ax = plt.subplots()
 
-    strides = [ i+1 for i in range(len(stride_sizes)) ]
-    rel_stride_sizes = [ 100.0 * s/sum(stride_sizes) for s in stride_sizes ]
+def plot_strides_sizes_imc_univ2_sorted():
+    title = "Sorted stride sizes: IMC Univ2 1 core, 0 churn"
+    fname = "stride_sizes_imc_univ2_sorted"
+    stride_sizes = [
+        87569535,
+        40811380,
+        23539985,
+        18571963,
+        13851406,
+        11713891,
+        9885699,
+        9587154,
+        8561487,
+        8247712,
+        6942025,
+        5617238,
+        4998550,
+        4561349,
+        4207084,
+        4005277,
+        3480217,
+        3127361,
+        2792760,
+        2594397,
+        2521734,
+        1860692,
+        1105224,
+        674167,
+        355310,
+        186334,
+        77116,
+        48263,
+        28957,
+        20295,
+        19487,
+        38996,
+    ]
+    plot_strides_sizes(title, fname, stride_sizes)
 
-    ax.bar(strides, rel_stride_sizes)
-
-    ax.set_xticks([ x for x in strides if x % 2 == 0 ])
-    ax.set_ylim(0, 100)
-
-    ax.set_ylabel('Relative Size (%)')
-    ax.set_title('FW sorted stride sizes: s=1.2, 40k flows, 1 core, 0 churn')
-
-    plt.tight_layout()
-    plt.savefig(out_file, dpi=300)
-    plt.close()
 
 if __name__ == "__main__":
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    plot_preliminary_1flow("uniform_1_flow")
-    plot_preliminary_zipfian("zipfian_40k_flows")
-    # plot_preliminary_imc_univ2("imc_univ2")
-    plot_orchestrator_zipfian("orchestrator_zipfian_40k_flows")
-    # plot_orchestrator_imc_univ2("orchestrator_imc_univ2")
-    # plot_fw_zipfian_greedy_stride_sizes("fw_greedy_stride_sizes")
-    # plot_fw_zipfian_sorted_stride_sizes("fw_sorted_stride_sizes")
+    plot_1flow()
+    plot_zipfian_s1_26()
+    plot_zipfian_s1_5()
+    plot_imc_univ2()
 
+    plot_strides_sizes_zipfian_s1_26_greedy()
+    plot_strides_sizes_zipfian_s1_26_sorted()
+    plot_strides_sizes_zipfian_s1_5_greedy()
+    plot_strides_sizes_zipfian_s1_5_sorted()
+    plot_strides_sizes_imc_univ2_greedy()
+    plot_strides_sizes_imc_univ2_sorted()
 
+    plot_orchestrator_zipfian_1_26()
+    plot_orchestrator_zipfian_1_5()
+    plot_orchestrator_imc_univ2()
