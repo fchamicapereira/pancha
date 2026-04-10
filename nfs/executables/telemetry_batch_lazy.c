@@ -67,13 +67,8 @@ int nf_process(uint16_t device, uint8_t *pkt, uint32_t pkt_len, time_ns_t now) {
 
   struct tcpudp_hdrs_t hdrs = nf_get_tcpudp_hdrs(pkt, pkt_len);
 
-  if (hdrs.ipv4_hdr == NULL) {
-    NF_DEBUG("Not IPv4, dropping");
-    return DROP;
-  }
-
-  if (hdrs.tcpudp_hdr == NULL) {
-    NF_DEBUG("Not TCP/UDP, dropping");
+  if (unlikely(hdrs.ipv4_hdr == NULL || hdrs.tcpudp_hdr == NULL)) {
+    NF_DEBUG("Not IPv4 or TCP/UDP, dropping");
     return DROP;
   }
 

@@ -533,38 +533,38 @@ def plot_strides_sizes_imc_univ2_greedy():
     title = "Greedy stride sizes: IMC Univ2 1 core, 0 churn"
     fname = "stride_sizes_imc_univ2_unsorted"
     stride_sizes = [
-        809273943,
-        206024326,
-        61454398,
-        35664971,
-        12831274,
-        8132180,
-        5106111,
-        5446363,
-        2501762,
-        1788494,
-        1173443,
-        838122,
-        619271,
-        387616,
-        273031,
-        272320,
-        121518,
-        91302,
-        63731,
-        56163,
-        35781,
-        28643,
-        21196,
-        26825,
-        12118,
-        10305,
-        8014,
-        10435,
-        5905,
-        5720,
-        4278,
-        50896,
+        57597312,
+        30459989,
+        15231563,
+        15385831,
+        9806968,
+        8717848,
+        6263532,
+        19188117,
+        4066122,
+        5024253,
+        3546119,
+        8339323,
+        2869760,
+        3333395,
+        2566033,
+        3642966,
+        2193768,
+        2450167,
+        1999070,
+        6157174,
+        1823942,
+        2552951,
+        1650800,
+        12544143,
+        1290273,
+        1472690,
+        1216945,
+        2755520,
+        1270941,
+        1994482,
+        1415694,
+        40774965,
     ]
 
     plot_strides_sizes(title, fname, stride_sizes)
@@ -613,18 +613,18 @@ def plot_strides_sizes_imc_univ2_sorted():
 if __name__ == "__main__":
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    plot_1flow()
-    plot_zipfian_s1_26()
-    plot_zipfian_s1_5()
-    plot_imc_univ2()
+    # plot_1flow()
+    # plot_zipfian_s1_26()
+    # plot_zipfian_s1_5()
+    # plot_imc_univ2()
 
-    plot_strides_sizes_zipfian_s1_26_greedy()
-    plot_strides_sizes_zipfian_s1_26_sorted()
-    plot_strides_sizes_zipfian_s1_5_greedy()
-    plot_strides_sizes_zipfian_s1_5_sorted()
+    # plot_strides_sizes_zipfian_s1_26_greedy()
+    # plot_strides_sizes_zipfian_s1_26_sorted()
+    # plot_strides_sizes_zipfian_s1_5_greedy()
+    # plot_strides_sizes_zipfian_s1_5_sorted()
     plot_strides_sizes_imc_univ2_greedy()
-    plot_strides_sizes_imc_univ2_sorted()
+    # plot_strides_sizes_imc_univ2_sorted()
 
-    plot_orchestrator_zipfian_1_26()
-    plot_orchestrator_zipfian_1_5()
-    plot_orchestrator_imc_univ2()
+    # plot_orchestrator_zipfian_1_26()
+    # plot_orchestrator_zipfian_1_5()
+    # plot_orchestrator_imc_univ2()

@@ -27,7 +27,7 @@
 #define FLOOD ((uint16_t)-2)
 
 #define MAX_FLOWS 524288
-#define EXPIRATION_TIME_NS 1000000000 // 1 seconds
+#define EXPIRATION_TIME_NS 3000000000 // 3 seconds
 #define LAN 0
 #define WAN 1
 

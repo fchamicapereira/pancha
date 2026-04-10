@@ -1,4 +1,4 @@
-#define TRACK_STRIDE_SIZES 0
+#define TRACK_STRIDE_SIZES 1
 
 #include "loop_batch_lazy.h"
 
@@ -40,8 +40,8 @@ void flow_manager_allocate_or_refresh_flow(struct flow_t *id, time_ns_t time) {
     return;
   }
   if (!dchain_allocate_new_index(state.heap, &index, time)) {
-    // No luck, the flow table is full, but we can at least let the
-    // outgoing traffic out.
+    // No luck, the flow table is full, but we can at least let the outgoing traffic out.
+    NF_INFO("[%ld] Flow table is full, dropping flow but allowing outgoing traffic", time);
     return;
   }
 
