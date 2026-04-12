@@ -5,6 +5,7 @@
 #define RING_SIZE 16384 /* Must be a power of 2 */
 #define POOL_CACHE_SIZE 256
 
+#define ORCHESTRATOR_MAX_FLOWS 2
 #define ORCHESTRATOR_TELEMETRY_PHASE_PACKETS 10000000ll
 #define ORCHESTRATOR_CMS_HEIGHT 9
 #define ORCHESTRATOR_CMS_WIDTH 524288
@@ -20,6 +21,7 @@ volatile int orchestrator_done = 0;
 
 struct lcore_conf {
   uint16_t queue_id;
+  bool is_elephant;
 } lcores_conf[RTE_MAX_LCORE];
 
 struct flow_t {
@@ -410,11 +412,13 @@ static inline void worker_loop() {
   RTE_LCORE_FOREACH_WORKER(worker_id) {
     if (worker_idx == 0) {
       // This is our Elephant core
-      lcores_conf[worker_id].queue_id = ELEPHANT_QUEUE_ID;
+      lcores_conf[worker_id].queue_id    = ELEPHANT_QUEUE_ID;
+      lcores_conf[worker_id].is_elephant = true;
       rte_eal_remote_launch((lcore_function_t *)elephant_worker_loop, NULL, worker_id);
     } else {
       // Generic workers. They start at queue 1, since queue 0 is reserved for the elephant core.
-      lcores_conf[worker_id].queue_id = 1 + (worker_idx - 1);
+      lcores_conf[worker_id].queue_id    = 1 + (worker_idx - 1);
+      lcores_conf[worker_id].is_elephant = false;
       rte_eal_remote_launch((lcore_function_t *)mice_worker_loop, NULL, worker_id);
     }
     worker_idx++;

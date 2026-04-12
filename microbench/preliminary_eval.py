@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 
 SCRIPT_DIR = Path(__file__).parent.absolute()
 OUT_DIR = SCRIPT_DIR / "plots"
+DATA_DIR = SCRIPT_DIR / ".." / "experiments" / "data"
 
 # FIG_FORMAT = "pdf"
 FIG_FORMAT = "png"
@@ -622,7 +623,7 @@ if __name__ == "__main__":
     # plot_strides_sizes_zipfian_s1_26_sorted()
     # plot_strides_sizes_zipfian_s1_5_greedy()
     # plot_strides_sizes_zipfian_s1_5_sorted()
-    plot_strides_sizes_imc_univ2_greedy()
+    # plot_strides_sizes_imc_univ2_greedy()
     # plot_strides_sizes_imc_univ2_sorted()
 
     # plot_orchestrator_zipfian_1_26()

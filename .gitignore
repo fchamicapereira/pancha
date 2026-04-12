@@ -3,3 +3,5 @@ env
 build
 deps
 .vscode
+__pycache__
+logs

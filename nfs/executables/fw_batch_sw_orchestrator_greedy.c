@@ -1,5 +1,3 @@
-#define TRACK_STRIDE_SIZES 0
-
 #include "loop_batch_sw_orchestrator_greedy.h"
 
 int main(int argc, char **argv) {
@@ -20,7 +18,7 @@ bool nf_init(void) {
   struct state_t *state = &RTE_PER_LCORE(state);
 
   uint32_t max_flows = MAX_FLOWS;
-  if (rte_lcore_id() == 16) {
+  if (lcores_conf[rte_lcore_id()].is_elephant) {
     max_flows = ORCHESTRATOR_MAX_FLOWS;
   }
 

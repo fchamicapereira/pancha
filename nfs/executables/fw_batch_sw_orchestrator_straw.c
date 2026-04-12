@@ -17,15 +17,20 @@ RTE_DEFINE_PER_LCORE(struct state_t, state);
 bool nf_init(void) {
   struct state_t *state = &RTE_PER_LCORE(state);
 
-  if (map_allocate(MAX_FLOWS, sizeof(struct flow_t), &(state->fm)) == 0) {
+  uint32_t max_flows = MAX_FLOWS;
+  if (lcores_conf[rte_lcore_id()].is_elephant) {
+    max_flows = ORCHESTRATOR_MAX_FLOWS;
+  }
+
+  if (map_allocate(max_flows, sizeof(struct flow_t), &(state->fm)) == 0) {
     return false;
   }
 
-  if (vector_allocate(sizeof(struct flow_t), MAX_FLOWS, &(state->fv)) == 0) {
+  if (vector_allocate(sizeof(struct flow_t), max_flows, &(state->fv)) == 0) {
     return false;
   }
 
-  if (dchain_allocate(MAX_FLOWS, &(state->heap)) == 0) {
+  if (dchain_allocate(max_flows, &(state->heap)) == 0) {
     return false;
   }
 

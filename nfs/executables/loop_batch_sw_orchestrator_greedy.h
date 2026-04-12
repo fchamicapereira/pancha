@@ -25,6 +25,7 @@ volatile int orchestrator_done = 0;
 
 struct lcore_conf {
   uint16_t queue_id;
+  bool is_elephant;
 } lcores_conf[RTE_MAX_LCORE];
 
 struct flow_t {
@@ -273,14 +274,10 @@ void mice_worker_loop() {
 
 #if TRACK_STRIDE_SIZES
 uint64_t stride_sizes[BATCH_SIZE];
-void handle_sigint(int sig) {
-  printf("\nCaught signal %d (SIGINT). Cleaning up...\n", sig);
-
+void handle_sigusr1(int sig) {
   for (size_t i = 0; i < BATCH_SIZE; i++) {
     printf("Stride size %zu: %lu packets\n", i + 1, stride_sizes[i]);
   }
-
-  _exit(0);
 }
 #endif
 
@@ -486,7 +483,7 @@ int nf_setup(int argc, char **argv) {
 
 #if TRACK_STRIDE_SIZES
   memset(stride_sizes, 0, sizeof(stride_sizes));
-  signal(SIGINT, handle_sigint);
+  signal(SIGUSR1, handle_sigusr1);
 #endif
 
   return 0;
@@ -501,11 +498,13 @@ static inline void worker_loop() {
   RTE_LCORE_FOREACH_WORKER(worker_id) {
     if (worker_idx == 0) {
       // This is our Elephant core
-      lcores_conf[worker_id].queue_id = ELEPHANT_QUEUE_ID;
+      lcores_conf[worker_id].queue_id    = ELEPHANT_QUEUE_ID;
+      lcores_conf[worker_id].is_elephant = true;
       rte_eal_remote_launch((lcore_function_t *)elephant_worker_loop, NULL, worker_id);
     } else {
       // Generic workers. They start at queue 1, since queue 0 is reserved for the elephant core.
-      lcores_conf[worker_id].queue_id = 1 + (worker_idx - 1);
+      lcores_conf[worker_id].queue_id    = 1 + (worker_idx - 1);
+      lcores_conf[worker_id].is_elephant = false;
       rte_eal_remote_launch((lcore_function_t *)mice_worker_loop, NULL, worker_id);
     }
     worker_idx++;

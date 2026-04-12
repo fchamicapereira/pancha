@@ -1,5 +1,3 @@
-#define TRACK_STRIDE_SIZES 0
-
 #include "loop_batch_greedy.h"
 
 #define SKETCH_WIDTH 65536

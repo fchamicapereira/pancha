@@ -1,5 +1,3 @@
-#define TRACK_STRIDE_SIZES 0
-
 #include "loop_parallel_shared_nothing.h"
 
 int main(int argc, char **argv) {

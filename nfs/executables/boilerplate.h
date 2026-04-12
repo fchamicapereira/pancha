@@ -26,8 +26,8 @@
 #define DROP ((uint16_t)-1)
 #define FLOOD ((uint16_t)-2)
 
-#define MAX_FLOWS 524288
-#define EXPIRATION_TIME_NS 3000000000 // 3 seconds
+#define MAX_FLOWS 1048576
+#define EXPIRATION_TIME_NS 1000000000 // 1 second
 #define LAN 0
 #define WAN 1
 
@@ -56,5 +56,5 @@ static void flood(struct rte_mbuf *packet, uint16_t nb_devices) {
   }
 }
 
-bool nf_init(void);
+bool nf_init();
 int nf_process(uint16_t device, uint8_t *pkt, uint32_t pkt_len, time_ns_t now);

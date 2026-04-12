@@ -118,14 +118,10 @@ int nf_init_device(uint16_t device, struct rte_mempool *mbuf_pool) {
 
 #if TRACK_STRIDE_SIZES
 uint64_t stride_sizes[BATCH_SIZE];
-void handle_sigint(int sig) {
-  printf("\nCaught signal %d (SIGINT). Cleaning up...\n", sig);
-
+void handle_sigusr1(int sig) {
   for (size_t i = 0; i < BATCH_SIZE; i++) {
     printf("Stride size %zu: %lu packets\n", i + 1, stride_sizes[i]);
   }
-
-  _exit(0);
 }
 #endif
 
@@ -167,7 +163,7 @@ int nf_setup(int argc, char **argv) {
 
 #if TRACK_STRIDE_SIZES
   memset(stride_sizes, 0, sizeof(stride_sizes));
-  signal(SIGINT, handle_sigint);
+  signal(SIGUSR1, handle_sigusr1);
 #endif
 
   return 0;
