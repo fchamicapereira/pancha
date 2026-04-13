@@ -5,6 +5,8 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
+from plot_style import _NF_COLORS, _TECHNIQUE_COLORS
+
 SCRIPT_DIR = Path(__file__).parent.absolute()
 OUT_DIR = SCRIPT_DIR / "plots"
 DATA_DIR = SCRIPT_DIR / ".." / "experiments" / "data"
@@ -13,17 +15,11 @@ DATA_DIR = SCRIPT_DIR / ".." / "experiments" / "data"
 FIG_FORMAT = "png"
 
 _STRIDE_SIZES_PATTERN = re.compile(
-    r"^single-core-stride-sizes-[^-]+-fw_batch_(greedy|lazy|sorted)-lbatch(\d+)\.csv$"
+    r"^(.+)-single-core-stride-sizes-fw_batch_(greedy|lazy|sorted)-lbatch(\d+)\.csv$"
 )
 _STRIDE_SIZES_NO_LBATCH_PATTERN = re.compile(
-    r"^single-core-stride-sizes-[^-]+-fw_batch_(greedy|lazy|sorted)\.csv$"
+    r"^(.+)-single-core-stride-sizes-fw_batch_(greedy|lazy|sorted)\.csv$"
 )
-
-_TECHNIQUE_COLORS = {
-    "lazy": "#19B2FF",
-    "greedy": "#FF7F00",
-    "sorted": "#654CFF",
-}
 
 
 def _read_stride_sizes_csv(path: Path) -> list[int]:
@@ -69,6 +65,7 @@ def _plot_stride_sizes_figure(stride_data_for_lbatch: dict[str, list[int]], titl
         ax.set_yticklabels(["0.01", "0.1", "1", "10", "100"])
         ax.set_ylim(0.005, 100)
         ax.set_xticks([x for x in strides if x % 4 == 0])
+        ax.tick_params(axis="x", which="both", length=0, bottom=False)
         ax.set_xlabel("Stride size")
         ax.set_title(technique)
         ax.text(
@@ -91,6 +88,7 @@ def _plot_stride_sizes_cdf_figure(stride_data_for_lbatch: dict[str, list[int]], 
     fig.suptitle(title)
 
     max_stride = 0
+
     for technique in techniques:
         if technique not in stride_data_for_lbatch:
             continue
@@ -104,7 +102,12 @@ def _plot_stride_sizes_cdf_figure(stride_data_for_lbatch: dict[str, list[int]], 
             cumulative.append(100.0 * running / total)
         avg = _weighted_average(counts)
         max_stride = max(max_stride, len(strides))
-        ax.plot(strides, cumulative, color=_TECHNIQUE_COLORS[technique], label=f"{technique} (avg={avg:.2f})", linewidth=1.5)
+        ax.plot(
+            strides, cumulative,
+            color=_TECHNIQUE_COLORS[technique],
+            label=f"{technique} (avg={avg:.2f})",
+            linewidth=1.5,
+        )
 
     ax.set_xlabel("Stride size")
     ax.set_ylabel("Cumulative frequency (%)")
@@ -122,54 +125,56 @@ def _plot_stride_sizes_cdf_figure(stride_data_for_lbatch: dict[str, list[int]], 
 
 
 def plot_stride_sizes_single_core():
-    """5 figures: one without logical batching, then one per logical batch size (64/256/1024/4096).
-    Each figure has 3 subplots: lazy, greedy, sorted."""
+    """For each pcap: one figure without logical batching, then one per logical batch size.
+    Each figure has 3 subplots (bar) or 3 overlaid lines (CDF): lazy, greedy, sorted."""
     lbatch_sizes = [64, 256, 1024, 4096]
 
-    # Load data for files without logical batching
-    no_lbatch_data: dict[str, list[int]] = {}
-    for csv_file in DATA_DIR.glob("single-core-stride-sizes-*.csv"):
+    # Load data for files without logical batching, keyed by (pcap, technique)
+    no_lbatch_data: dict[str, dict[str, list[int]]] = {}
+    for csv_file in DATA_DIR.glob("*-single-core-stride-sizes-*.csv"):
         m = _STRIDE_SIZES_NO_LBATCH_PATTERN.match(csv_file.name)
         if not m:
             continue
-        no_lbatch_data[m.group(1)] = _read_stride_sizes_csv(csv_file)
+        pcap, technique = m.group(1), m.group(2)
+        no_lbatch_data.setdefault(pcap, {})[technique] = _read_stride_sizes_csv(csv_file)
 
-    if no_lbatch_data:
+    for pcap, techniques_data in sorted(no_lbatch_data.items()):
         _plot_stride_sizes_figure(
-            no_lbatch_data,
-            "Stride sizes — no logical batching",
-            OUT_DIR / f"stride_sizes_single_core_no_lbatch.{FIG_FORMAT}",
+            techniques_data,
+            f"{pcap} — stride sizes",
+            OUT_DIR / f"{pcap}_stride_sizes_single_core_no_lbatch.{FIG_FORMAT}",
         )
         _plot_stride_sizes_cdf_figure(
-            no_lbatch_data,
-            "Stride sizes CDF — no logical batching",
-            OUT_DIR / f"stride_sizes_cdf_single_core_no_lbatch.{FIG_FORMAT}",
+            techniques_data,
+            f"{pcap} — stride sizes CDF",
+            OUT_DIR / f"{pcap}_stride_sizes_cdf_single_core_no_lbatch.{FIG_FORMAT}",
         )
 
-    # Load data for files with logical batching
-    stride_data: dict[int, dict[str, list[int]]] = {}
-    for csv_file in DATA_DIR.glob("single-core-stride-sizes-*.csv"):
+    # Load data for files with logical batching, keyed by (pcap, lbatch, technique)
+    stride_data: dict[str, dict[int, dict[str, list[int]]]] = {}
+    for csv_file in DATA_DIR.glob("*-single-core-stride-sizes-*.csv"):
         m = _STRIDE_SIZES_PATTERN.match(csv_file.name)
         if not m:
             continue
-        technique, lbatch = m.group(1), int(m.group(2))
-        stride_data.setdefault(lbatch, {})[technique] = _read_stride_sizes_csv(csv_file)
+        pcap, technique, lbatch = m.group(1), m.group(2), int(m.group(3))
+        stride_data.setdefault(pcap, {}).setdefault(lbatch, {})[technique] = _read_stride_sizes_csv(csv_file)
 
-    for lbatch in lbatch_sizes:
-        if lbatch not in stride_data:
-            print(f"No stride-sizes data for lbatch={lbatch}, skipping.")
-            continue
+    for pcap, lbatch_map in sorted(stride_data.items()):
+        for lbatch in lbatch_sizes:
+            if lbatch not in lbatch_map:
+                print(f"No stride-sizes data for pcap={pcap} lbatch={lbatch}, skipping.")
+                continue
 
-        _plot_stride_sizes_figure(
-            stride_data[lbatch],
-            f"Stride sizes — logical batch size {lbatch}",
-            OUT_DIR / f"stride_sizes_single_core_lbatch{lbatch}.{FIG_FORMAT}",
-        )
-        _plot_stride_sizes_cdf_figure(
-            stride_data[lbatch],
-            f"Stride sizes CDF — logical batch size {lbatch}",
-            OUT_DIR / f"stride_sizes_cdf_single_core_lbatch{lbatch}.{FIG_FORMAT}",
-        )
+            _plot_stride_sizes_figure(
+                lbatch_map[lbatch],
+                f"{pcap} — stride sizes — logical batch size {lbatch}",
+                OUT_DIR / f"{pcap}_stride_sizes_single_core_lbatch{lbatch}.{FIG_FORMAT}",
+            )
+            _plot_stride_sizes_cdf_figure(
+                lbatch_map[lbatch],
+                f"{pcap} — stride sizes CDF — logical batch size {lbatch}",
+                OUT_DIR / f"{pcap}_stride_sizes_cdf_single_core_lbatch{lbatch}.{FIG_FORMAT}",
+            )
 
 
 if __name__ == "__main__":

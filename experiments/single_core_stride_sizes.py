@@ -14,8 +14,17 @@ from hosts.nf import NF
 LOG_DIR = Path("logs")
 DATA_DIR = Path("data")
 
+
+def _pcap_stem(pcap: Path) -> str:
+    """Return the pcap filename with all extensions stripped."""
+    name = pcap.name
+    while Path(name).suffix:
+        name = Path(name).stem
+    return name
+
 PCAPS = [
     Path("/home/fcp/pcaps/imc10/univ2_pt0"),
+    Path("/home/fcp/pcaps/mawi-202604071400-10M.pcap.zst"),
 ]
 
 NFS = [
@@ -101,7 +110,7 @@ def build_experiment(
     pktgen: Pktgen,
     console: Console,
 ) -> StrideSizesExperiment:
-    name = f"single-core-stride-sizes-{pcap.stem}-{nf_name}"
+    name = f"{_pcap_stem(pcap)}-single-core-stride-sizes-{nf_name}"
     if logical_batch_size is not None:
         name += f"-lbatch{logical_batch_size}"
     return StrideSizesExperiment(

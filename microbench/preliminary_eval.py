@@ -4,6 +4,8 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
+from plot_style import _NF_COLORS, _TECHNIQUE_COLORS
+
 SCRIPT_DIR = Path(__file__).parent.absolute()
 OUT_DIR = SCRIPT_DIR / "plots"
 DATA_DIR = SCRIPT_DIR / ".." / "experiments" / "data"
@@ -30,17 +32,7 @@ def plot_1flow():
         ("batched\ntelemetry\ngreedy", 31),
     ]
 
-    colors = [
-        "#19B2FF",
-        "#19B2FF",
-        "#19B2FF",
-        "#FF7F00",
-        "#FF7F00",
-        "#FF7F00",
-        "#654CFF",
-        "#654CFF",
-        "#654CFF",
-    ]
+    colors = [_NF_COLORS["nop"]] * 3 + [_NF_COLORS["fw"]] * 3 + [_NF_COLORS["telemetry"]] * 3
 
     nfs = [d[0] for d in data]
     mpps = [d[1] for d in data]
@@ -79,17 +71,7 @@ def plot_zipfian_s1_5():
     nfs = [d[0] for d in data]
     mpps = [d[1] for d in data]
 
-    colors = [
-        "#19B2FF",
-        "#19B2FF",
-        "#19B2FF",
-        "#FF7F00",
-        "#FF7F00",
-        "#FF7F00",
-        "#654CFF",
-        "#654CFF",
-        "#654CFF",
-    ]
+    colors = [_NF_COLORS["nop"]] * 3 + [_NF_COLORS["fw"]] * 3 + [_NF_COLORS["telemetry"]] * 3
 
     bars = ax.bar(nfs, mpps, color=colors)
     ax.bar_label(bars, padding=3)
@@ -125,17 +107,7 @@ def plot_zipfian_s1_26():
     nfs = [d[0] for d in data]
     mpps = [d[1] for d in data]
 
-    colors = [
-        "#19B2FF",
-        "#19B2FF",
-        "#19B2FF",
-        "#FF7F00",
-        "#FF7F00",
-        "#FF7F00",
-        "#654CFF",
-        "#654CFF",
-        "#654CFF",
-    ]
+    colors = [_NF_COLORS["nop"]] * 3 + [_NF_COLORS["fw"]] * 3 + [_NF_COLORS["telemetry"]] * 3
 
     bars = ax.bar(nfs, mpps, color=colors)
     ax.bar_label(bars, padding=3)
@@ -171,17 +143,7 @@ def plot_imc_univ2():
     nfs = [d[0] for d in data]
     mpps = [d[1] for d in data]
 
-    colors = [
-        "#19B2FF",
-        "#19B2FF",
-        "#19B2FF",
-        "#FF7F00",
-        "#FF7F00",
-        "#FF7F00",
-        "#654CFF",
-        "#654CFF",
-        "#654CFF",
-    ]
+    colors = [_NF_COLORS["nop"]] * 3 + [_NF_COLORS["fw"]] * 3 + [_NF_COLORS["telemetry"]] * 3
 
     bars = ax.bar(nfs, mpps, color=colors)
     ax.bar_label(bars, padding=3)
@@ -218,18 +180,7 @@ def plot_orchestrator_zipfian_1_5():
     nfs = [d[0] for d in data]
     mpps = [d[1] for d in data]
 
-    colors = [
-        "#FF7F00",
-        "#FF7F00",
-        "#FF7F00",
-        "#FF7F00",
-        "#FF7F00",
-        "#654CFF",
-        "#654CFF",
-        "#654CFF",
-        "#654CFF",
-        "#654CFF",
-    ]
+    colors = [_NF_COLORS["fw"]] * 5 + [_NF_COLORS["telemetry"]] * 5
 
     bars = ax.bar(nfs, mpps, color=colors)
     ax.bar_label(bars, padding=3)
@@ -266,18 +217,7 @@ def plot_orchestrator_zipfian_1_26():
     nfs = [d[0] for d in data]
     mpps = [d[1] for d in data]
 
-    colors = [
-        "#FF7F00",
-        "#FF7F00",
-        "#FF7F00",
-        "#FF7F00",
-        "#FF7F00",
-        "#654CFF",
-        "#654CFF",
-        "#654CFF",
-        "#654CFF",
-        "#654CFF",
-    ]
+    colors = [_NF_COLORS["fw"]] * 5 + [_NF_COLORS["telemetry"]] * 5
 
     bars = ax.bar(nfs, mpps, color=colors)
     ax.bar_label(bars, padding=3)
@@ -314,18 +254,7 @@ def plot_orchestrator_imc_univ2():
     nfs = [d[0] for d in data]
     mpps = [d[1] for d in data]
 
-    colors = [
-        "#FF7F00",
-        "#FF7F00",
-        "#FF7F00",
-        "#FF7F00",
-        "#FF7F00",
-        "#654CFF",
-        "#654CFF",
-        "#654CFF",
-        "#654CFF",
-        "#654CFF",
-    ]
+    colors = [_NF_COLORS["fw"]] * 5 + [_NF_COLORS["telemetry"]] * 5
 
     bars = ax.bar(nfs, mpps, color=colors)
     ax.bar_label(bars, padding=3)
@@ -340,7 +269,7 @@ def plot_orchestrator_imc_univ2():
     plt.close()
 
 
-def plot_strides_sizes(exp_name: str, fname: str, stride_sizes: list[int]):
+def plot_strides_sizes(exp_name: str, fname: str, stride_sizes: list[int], color: str = "#888888"):
     out_file = OUT_DIR / f"{fname}.{FIG_FORMAT}"
     print(f"Plotting to {out_file}...")
 
@@ -349,7 +278,7 @@ def plot_strides_sizes(exp_name: str, fname: str, stride_sizes: list[int]):
     strides = [i + 1 for i in range(len(stride_sizes))]
     rel = [100.0 * s / sum(stride_sizes) for s in stride_sizes]
 
-    ax.bar(strides, rel)
+    ax.bar(strides, rel, color=color)
 
     # Let's use log scale for the y axis, but we need to set the ticks manually to show the percentages.
     ax.set_yscale("log")
@@ -406,7 +335,7 @@ def plot_strides_sizes_zipfian_s1_26_greedy():
         0,
     ]
 
-    plot_strides_sizes(title, fname, stride_sizes)
+    plot_strides_sizes(title, fname, stride_sizes, color=_TECHNIQUE_COLORS["greedy"])
 
 
 def plot_strides_sizes_zipfian_s1_26_sorted():
@@ -446,7 +375,7 @@ def plot_strides_sizes_zipfian_s1_26_sorted():
         0,
         0,
     ]
-    plot_strides_sizes(title, fname, stride_sizes)
+    plot_strides_sizes(title, fname, stride_sizes, color=_TECHNIQUE_COLORS["sorted"])
 
 
 def plot_strides_sizes_zipfian_s1_5_greedy():
@@ -487,7 +416,7 @@ def plot_strides_sizes_zipfian_s1_5_greedy():
         0,
     ]
 
-    plot_strides_sizes(title, fname, stride_sizes)
+    plot_strides_sizes(title, fname, stride_sizes, color=_TECHNIQUE_COLORS["greedy"])
 
 
 def plot_strides_sizes_zipfian_s1_5_sorted():
@@ -527,7 +456,7 @@ def plot_strides_sizes_zipfian_s1_5_sorted():
         0,
         0,
     ]
-    plot_strides_sizes(title, fname, stride_sizes)
+    plot_strides_sizes(title, fname, stride_sizes, color=_TECHNIQUE_COLORS["sorted"])
 
 
 def plot_strides_sizes_imc_univ2_greedy():
@@ -568,7 +497,7 @@ def plot_strides_sizes_imc_univ2_greedy():
         40774965,
     ]
 
-    plot_strides_sizes(title, fname, stride_sizes)
+    plot_strides_sizes(title, fname, stride_sizes, color=_TECHNIQUE_COLORS["greedy"])
 
 
 def plot_strides_sizes_imc_univ2_sorted():
@@ -608,7 +537,7 @@ def plot_strides_sizes_imc_univ2_sorted():
         19487,
         38996,
     ]
-    plot_strides_sizes(title, fname, stride_sizes)
+    plot_strides_sizes(title, fname, stride_sizes, color=_TECHNIQUE_COLORS["sorted"])
 
 
 if __name__ == "__main__":
