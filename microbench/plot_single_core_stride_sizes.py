@@ -39,6 +39,13 @@ def _read_stride_sizes_csv(path: Path) -> list[int]:
     return [counts.get(i, 0) for i in range(1, max_stride + 1)]
 
 
+def _weighted_average(counts: list[int]) -> float:
+    total = sum(counts)
+    if total == 0:
+        return 0.0
+    return sum(stride * c for stride, c in enumerate(counts, start=1)) / total
+
+
 def _plot_stride_sizes_figure(stride_data_for_lbatch: dict[str, list[int]], title: str, out_file: Path):
     techniques = ["lazy", "greedy", "sorted"]
     fig, axes = plt.subplots(1, 3, figsize=(15, 4), sharey=True)
@@ -55,6 +62,7 @@ def _plot_stride_sizes_figure(stride_data_for_lbatch: dict[str, list[int]], titl
         strides = list(range(1, len(counts) + 1))
         rel = [100.0 * c / total for c in counts]
 
+        avg = _weighted_average(counts)
         ax.bar(strides, rel, color=_TECHNIQUE_COLORS[technique])
         ax.set_yscale("log")
         ax.set_yticks([0.01, 0.1, 1, 10, 100])
@@ -63,8 +71,49 @@ def _plot_stride_sizes_figure(stride_data_for_lbatch: dict[str, list[int]], titl
         ax.set_xticks([x for x in strides if x % 4 == 0])
         ax.set_xlabel("Stride size")
         ax.set_title(technique)
+        ax.text(
+            0.05, 0.95, f"avg = {avg:.2f}",
+            transform=ax.transAxes, ha="left", va="top",
+            fontsize=9, bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.7),
+        )
 
     axes[0].set_ylabel("Relative frequency (%)")
+
+    plt.tight_layout()
+    print(f"Plotting to {out_file}...")
+    plt.savefig(out_file, dpi=300)
+    plt.close()
+
+
+def _plot_stride_sizes_cdf_figure(stride_data_for_lbatch: dict[str, list[int]], title: str, out_file: Path):
+    techniques = ["lazy", "greedy", "sorted"]
+    fig, ax = plt.subplots(figsize=(7, 4))
+    fig.suptitle(title)
+
+    max_stride = 0
+    for technique in techniques:
+        if technique not in stride_data_for_lbatch:
+            continue
+        counts = stride_data_for_lbatch[technique]
+        total = sum(counts)
+        strides = list(range(1, len(counts) + 1))
+        cumulative = []
+        running = 0
+        for c in counts:
+            running += c
+            cumulative.append(100.0 * running / total)
+        avg = _weighted_average(counts)
+        max_stride = max(max_stride, len(strides))
+        ax.plot(strides, cumulative, color=_TECHNIQUE_COLORS[technique], label=f"{technique} (avg={avg:.2f})", linewidth=1.5)
+
+    ax.set_xlabel("Stride size")
+    ax.set_ylabel("Cumulative frequency (%)")
+    ax.set_xlim(1, max_stride)
+    ax.set_ylim(0, 100)
+    if max_stride > 0:
+        tick_step = max(1, (max_stride // 8) // 4 * 4)
+        ax.set_xticks([x for x in range(tick_step, max_stride + 1, tick_step)])
+    ax.legend(loc="lower right")
 
     plt.tight_layout()
     print(f"Plotting to {out_file}...")
@@ -91,6 +140,11 @@ def plot_stride_sizes_single_core():
             "Stride sizes — no logical batching",
             OUT_DIR / f"stride_sizes_single_core_no_lbatch.{FIG_FORMAT}",
         )
+        _plot_stride_sizes_cdf_figure(
+            no_lbatch_data,
+            "Stride sizes CDF — no logical batching",
+            OUT_DIR / f"stride_sizes_cdf_single_core_no_lbatch.{FIG_FORMAT}",
+        )
 
     # Load data for files with logical batching
     stride_data: dict[int, dict[str, list[int]]] = {}
@@ -110,6 +164,11 @@ def plot_stride_sizes_single_core():
             stride_data[lbatch],
             f"Stride sizes — logical batch size {lbatch}",
             OUT_DIR / f"stride_sizes_single_core_lbatch{lbatch}.{FIG_FORMAT}",
+        )
+        _plot_stride_sizes_cdf_figure(
+            stride_data[lbatch],
+            f"Stride sizes CDF — logical batch size {lbatch}",
+            OUT_DIR / f"stride_sizes_cdf_single_core_lbatch{lbatch}.{FIG_FORMAT}",
         )
 
 
