@@ -21,6 +21,18 @@ class TrafficDist(enum.Enum):
 
 
 @dataclass
+class SyntheticTrafficConfig:
+    nb_flows: int = 100_000
+    traffic_dist: TrafficDist = TrafficDist.UNIFORM
+    zipf_param: float = 0
+
+
+@dataclass
+class PcapConfig:
+    pcap_path: Path
+
+
+@dataclass
 class ThroughputReport:
     bps: int
     pps: int
@@ -30,7 +42,7 @@ class ThroughputReport:
         bps_str = metric(self.bps)
         pps_str = metric(self.pps)
         loss_str = f"{self.loss*100:.3f}%"
-        return f"Throughput: {bps_str}bps ({pps_str}pps), Loss: {loss_str}"
+        return f"SingleCore: {bps_str}bps ({pps_str}pps), Loss: {loss_str}"
 
 
 @dataclass
@@ -50,7 +62,7 @@ class Pktgen:
         repo: str,
         rx_pcie_dev: str,
         tx_pcie_dev: str,
-        nb_tx_cores: int,
+        nb_tx_cores: int = 8,
         log_file: Optional[Path] = None,
     ) -> None:
         self.host = RemoteHost(hostname, log_file=log_file)
@@ -105,12 +117,9 @@ class Pktgen:
 
     def launch(
         self,
-        pcap: Optional[Path] = None,
         logical_batch_size: Optional[int] = None,
-        sync_cores: bool = False,
-        nb_flows: Optional[int] = None,
-        traffic_dist: Optional[TrafficDist] = None,
-        zipf_param: Optional[float] = None,
+        sync_cores: bool = True,
+        traffic_config: SyntheticTrafficConfig | PcapConfig = SyntheticTrafficConfig(),
         pkt_size: Optional[int] = None,
         kvs_mode: bool = False,
         kvs_get_ratio: Optional[float] = None,
@@ -125,27 +134,27 @@ class Pktgen:
         tx_port = int(self.tx_pcie_dev.split(".")[-1])
         rx_port = int(self.rx_pcie_dev.split(".")[-1])
 
-        if zipf_param == 0:
-            traffic_dist = TrafficDist.UNIFORM
-
         pktgen_options_list = [
             f"--tx {tx_port}",
             f"--rx {rx_port}",
             f"--tx-cores {self.nb_tx_cores}",
         ]
 
-        if pcap is not None:
-            pktgen_options_list.append(f"--pcap {pcap}")
         if logical_batch_size is not None:
             pktgen_options_list.append(f"--logical-batch-size {logical_batch_size}")
         if sync_cores:
             pktgen_options_list.append(f"--sync-cores")
-        if nb_flows is not None:
-            pktgen_options_list.append(f"--total-flows {nb_flows}")
-        if traffic_dist is not None:
-            pktgen_options_list.append(f"--dist {traffic_dist.value}")
-        if zipf_param is not None:
-            pktgen_options_list.append(f"--zipf-param {zipf_param}")
+
+        if isinstance(traffic_config, SyntheticTrafficConfig):
+            if traffic_config.zipf_param == 0:
+                traffic_config.traffic_dist = TrafficDist.UNIFORM
+            pktgen_options_list.append(f"--total-flows {traffic_config.nb_flows}")
+            pktgen_options_list.append(f"--dist {traffic_config.traffic_dist.value}")
+            pktgen_options_list.append(f"--zipf-param {traffic_config.zipf_param}")
+        else:
+            assert isinstance(traffic_config, PcapConfig)
+            pktgen_options_list.append(f"--pcap {traffic_config.pcap_path}")
+
         if pkt_size is not None:
             pktgen_options_list.append(f"--pkt-size {pkt_size}")
         if kvs_mode:

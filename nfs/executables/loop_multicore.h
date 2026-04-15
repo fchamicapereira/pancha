@@ -83,8 +83,11 @@ int nf_setup(int argc, char **argv) {
 
   uint16_t nb_workers = rte_lcore_count();
 
-  struct rte_mempool *mbuf_pool = rte_pktmbuf_pool_create("MEMPOOL", MEMPOOL_BUFFER_COUNT * nb_devices, MBUF_CACHE_SIZE,
-                                                          priv_size, data_room_size, rte_socket_id());
+  // Need enough mbufs for all RX rings (nb_workers * nb_devices * RX_QUEUE_SIZE)
+  // plus headroom for in-flight packets and per-core caches.
+  uint32_t pool_size = nb_workers * nb_devices * (RX_QUEUE_SIZE + MBUF_CACHE_SIZE) * 2;
+  struct rte_mempool *mbuf_pool =
+      rte_pktmbuf_pool_create("MEMPOOL", pool_size, MBUF_CACHE_SIZE, priv_size, data_room_size, rte_socket_id());
   if (mbuf_pool == NULL) {
     rte_exit(EXIT_FAILURE, "Cannot create pool: %s\n", rte_strerror(rte_errno));
   }

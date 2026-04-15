@@ -46,9 +46,7 @@ struct flow_t flow_from_pkt(uint8_t *pkt, uint32_t pkt_len) {
 int nf_init_device(uint16_t device, struct rte_mempool *mbuf_pool) {
   int retval;
 
-  // device_conf passed to rte_eth_dev_configure cannot be NULL
   struct rte_eth_conf device_conf = {0};
-  // device_conf.rxmode.hw_strip_crc = 1;
 
   // Configure the device (1, 1 == number of RX/TX queues)
   retval = rte_eth_dev_configure(device, 1, 1, &device_conf);
@@ -106,8 +104,10 @@ int nf_setup(int argc, char **argv) {
 
   uint16_t data_room_size = RTE_MBUF_DEFAULT_BUF_SIZE;
 
-  struct rte_mempool *mbuf_pool = rte_pktmbuf_pool_create("MEMPOOL", MEMPOOL_BUFFER_COUNT * nb_devices, MBUF_CACHE_SIZE,
-                                                          priv_size, data_room_size, rte_socket_id());
+  uint16_t nb_workers = rte_lcore_count();
+  uint32_t pool_size  = nb_workers * nb_devices * (RX_QUEUE_SIZE + MBUF_CACHE_SIZE) * 2;
+  struct rte_mempool *mbuf_pool =
+      rte_pktmbuf_pool_create("MEMPOOL", pool_size, MBUF_CACHE_SIZE, priv_size, data_room_size, rte_socket_id());
   if (mbuf_pool == NULL) {
     rte_exit(EXIT_FAILURE, "Cannot create pool: %s\n", rte_strerror(rte_errno));
   }

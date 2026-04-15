@@ -60,7 +60,7 @@ def parse_csv_files(data_dir: Path) -> dict:
 def plot_nf_lbatch(data: dict, metric: str = "mpps"):
     """One plot per (pcap, NF): grouped barplot of techniques across logical batch sizes."""
     assert metric in ("mpps", "mbps")
-    ylabel = "Throughput (Mpps)" if metric == "mpps" else "Throughput (Mbps)"
+    ylabel = "SingleCore (Mpps)" if metric == "mpps" else "SingleCore (Mbps)"
 
     for pcap, pcap_data in sorted(data.items()):
         for nf, tech_data in sorted(pcap_data.items()):
@@ -118,7 +118,7 @@ def plot_nf_lbatch(data: dict, metric: str = "mpps"):
 def plot_all_nfs_by_technique(data: dict, metric: str = "mpps"):
     """One plot per (pcap, lbatch): grouped barplot of NFs across techniques."""
     assert metric in ("mpps", "mbps")
-    ylabel = "Throughput (Mpps)" if metric == "mpps" else "Throughput (Mbps)"
+    ylabel = "SingleCore (Mpps)" if metric == "mpps" else "SingleCore (Mbps)"
 
     for pcap, pcap_data in sorted(data.items()):
         all_lbatches = sorted(

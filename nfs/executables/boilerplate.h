@@ -36,9 +36,6 @@ static const uint32_t MBUF_CACHE_SIZE = 256;
 static const uint16_t RX_QUEUE_SIZE = 1024;
 static const uint16_t TX_QUEUE_SIZE = 1024;
 
-// Buffer count for mempools
-static const unsigned MEMPOOL_BUFFER_COUNT = 16384;
-
 // Send the given packet to all devices except the packet's own
 static void flood(struct rte_mbuf *packet, uint16_t nb_devices) {
   rte_mbuf_refcnt_set(packet, nb_devices - 1);

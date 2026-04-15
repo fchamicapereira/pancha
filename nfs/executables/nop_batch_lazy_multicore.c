@@ -1,4 +1,4 @@
-#include "loop_parallel_shared_nothing.h"
+#include "loop_batch_lazy_multicore.h"
 
 int main(int argc, char **argv) {
   nf_setup(argc, argv);

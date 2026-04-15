@@ -1,4 +1,4 @@
-#include "loop_parallel_shared_nothing.h"
+#include "loop_batch_lazy_multicore.h"
 
 #define SKETCH_WIDTH 65536
 #define SKETCH_HEIGHT 7

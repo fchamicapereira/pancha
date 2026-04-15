@@ -1,4 +1,3 @@
-from time import sleep
 from datetime import datetime
 from typing import Optional
 from pathlib import Path
@@ -13,7 +12,7 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
-from hosts.pktgen import Pktgen
+from hosts.pktgen import PcapConfig, Pktgen, SyntheticTrafficConfig
 from hosts.nf import NF
 
 DEFAULT_EXPERIMENT_ITERATIONS = 5
@@ -65,7 +64,7 @@ class Experiment:
             self.run(step_progress, iter)
             progress.update(task_id, advance=1)
 
-        progress.update(task_id, description="[bold green] done!")
+        progress.update(task_id, description="[bold green] done!", visible=False)
 
 
 class ExperimentTracker:
@@ -131,7 +130,7 @@ class SingleCore(Experiment):
         pktgen: Pktgen,
         nf: NF,
         # Pktgen
-        pcap: Path,
+        traffic_config: SyntheticTrafficConfig | PcapConfig,
         logical_batch_size: Optional[int],
         experiment_log_file: Optional[Path] = None,
         iterations: int = DEFAULT_EXPERIMENT_ITERATIONS,
@@ -148,7 +147,7 @@ class SingleCore(Experiment):
         self.nf = nf
 
         # Pktgen
-        self.pcap = pcap
+        self.traffic_config = traffic_config
         self.logical_batch_size = logical_batch_size
 
         self.console = console
@@ -189,7 +188,7 @@ class SingleCore(Experiment):
 
         self.log("Launching pktgen")
         self.pktgen.launch(
-            pcap=self.pcap,
+            traffic_config=self.traffic_config,
             sync_cores=True,
             logical_batch_size=self.logical_batch_size,
         )
@@ -221,3 +220,118 @@ class SingleCore(Experiment):
 
         self.pktgen.quit()
         self.nf.kill()
+
+
+class MultiCore(Experiment):
+    def __init__(
+        self,
+        # Experiment parameters
+        name: str,
+        save_name: Path,
+        nb_cores_list: list[int],
+        # Hosts
+        pktgen: Pktgen,
+        nf: NF,
+        # Pktgen
+        traffic_config: SyntheticTrafficConfig | PcapConfig,
+        logical_batch_size: Optional[int],
+        experiment_log_file: Optional[Path] = None,
+        iterations: int = DEFAULT_EXPERIMENT_ITERATIONS,
+        console: Console = Console(),
+    ) -> None:
+        super().__init__(name, pktgen, nf, experiment_log_file, iterations)
+
+        # Experiment parameters
+        self.name = name
+        self.save_name = save_name
+        self.nb_cores_list = nb_cores_list
+
+        # Hosts
+        self.pktgen = pktgen
+        self.nf = nf
+
+        # Pktgen
+        self.traffic_config = traffic_config
+        self.logical_batch_size = logical_batch_size
+
+        self.console = console
+
+        self._sync()
+
+    def _sync(self):
+        header = f"#it, nb_cores, tput (bps), tput (pps)\n"
+
+        self.experiment_tracker = set()
+        self.save_name.parent.mkdir(parents=True, exist_ok=True)
+
+        # If file exists, continue where we left off.
+        if not self.save_name.exists():
+            with open(self.save_name, "w") as f:
+                f.write(header)
+            return
+
+        with open(self.save_name) as f:
+            read_header = f.readline()
+            assert header == read_header
+
+            for row in f.readlines():
+                cols = row.split(",")
+                it = int(cols[0])
+                nb_cores = int(cols[1])
+                self.experiment_tracker.add((it, nb_cores))
+
+    def run(
+        self,
+        step_progress: Progress,
+        current_iter: int,
+    ) -> None:
+        task_id = step_progress.add_task(self.name, total=1)
+
+        missing_nb_cores_it = list(self.nb_cores_list)  # copy since we will pop from it
+        for nb_cores in self.nb_cores_list:
+            if (current_iter, nb_cores) in self.experiment_tracker:
+                self.console.log(f"[orange1]Skipping: {current_iter} nb_cores={nb_cores}")
+                step_progress.update(task_id, advance=1)
+                missing_nb_cores_it.remove(nb_cores)
+
+        if len(missing_nb_cores_it) == 0:
+            step_progress.update(task_id, visible=False)
+            return
+
+        self.log("Launching pktgen")
+        self.pktgen.launch(
+            traffic_config=self.traffic_config,
+            sync_cores=True,
+            logical_batch_size=self.logical_batch_size,
+        )
+
+        self.log("Waiting for Pktgen")
+        self.pktgen.wait_launch()
+
+        for nb_cores in missing_nb_cores_it:
+            self.log("Launching NF")
+            self.nf.launch(nb_cores=nb_cores)
+
+            self.log("Waiting for NF")
+            self.nf.wait_launch()
+
+            self.log("Starting experiment")
+
+            step_progress.update(task_id, description=f"({current_iter})")
+
+            report = self.pktgen.bench()
+            self.log(str(report.tput))
+
+            with open(self.save_name, "a") as f:
+                f.write(f"{current_iter}")
+                f.write(f",{nb_cores}")
+                f.write(f",{report.tput.bps}")
+                f.write(f",{report.tput.pps}")
+                f.write(f"\n")
+
+            step_progress.update(task_id, advance=1)
+            step_progress.update(task_id, visible=False)
+
+            self.nf.kill()
+
+        self.pktgen.quit()

@@ -40,7 +40,7 @@ def plot_1flow():
     bars = ax.bar(nfs, mpps, color=colors)
     ax.bar_label(bars, padding=3)
 
-    ax.set_ylabel("Throughput (Mpps)")
+    ax.set_ylabel("SingleCore (Mpps)")
     ax.set_title("Stride processing: 1 flow, 1 core, 0 churn")
 
     ax.set_ylim(0, 35)
@@ -76,7 +76,7 @@ def plot_zipfian_s1_5():
     bars = ax.bar(nfs, mpps, color=colors)
     ax.bar_label(bars, padding=3)
 
-    ax.set_ylabel("Throughput (Mpps)")
+    ax.set_ylabel("SingleCore (Mpps)")
     ax.set_title("Stride processing: s=1.5, 40k flows, 1 core, 0 churn")
 
     ax.set_ylim(0, 35)
@@ -112,7 +112,7 @@ def plot_zipfian_s1_26():
     bars = ax.bar(nfs, mpps, color=colors)
     ax.bar_label(bars, padding=3)
 
-    ax.set_ylabel("Throughput (Mpps)")
+    ax.set_ylabel("SingleCore (Mpps)")
     ax.set_title("Stride processing: s=1.26, 40k flows, 1 core, 0 churn")
 
     ax.set_ylim(0, 35)
@@ -148,7 +148,7 @@ def plot_imc_univ2():
     bars = ax.bar(nfs, mpps, color=colors)
     ax.bar_label(bars, padding=3)
 
-    ax.set_ylabel("Throughput (Mpps)")
+    ax.set_ylabel("SingleCore (Mpps)")
     ax.set_title("Stride processing: IMC Univ2, 1 core, 0 churn")
 
     ax.set_ylim(0, 35)
@@ -185,7 +185,7 @@ def plot_orchestrator_zipfian_1_5():
     bars = ax.bar(nfs, mpps, color=colors)
     ax.bar_label(bars, padding=3)
 
-    ax.set_ylabel("Throughput (Mpps)")
+    ax.set_ylabel("SingleCore (Mpps)")
     ax.set_title("Stride processing: s=1.5, 40k flows, 1 core, 0 churn")
 
     ax.set_ylim(0, 35)
@@ -222,7 +222,7 @@ def plot_orchestrator_zipfian_1_26():
     bars = ax.bar(nfs, mpps, color=colors)
     ax.bar_label(bars, padding=3)
 
-    ax.set_ylabel("Throughput (Mpps)")
+    ax.set_ylabel("SingleCore (Mpps)")
     ax.set_title("Stride processing: s=1.26, 40k flows, 1 core, 0 churn")
 
     ax.set_ylim(0, 35)
@@ -259,7 +259,7 @@ def plot_orchestrator_imc_univ2():
     bars = ax.bar(nfs, mpps, color=colors)
     ax.bar_label(bars, padding=3)
 
-    ax.set_ylabel("Throughput (Mpps)")
+    ax.set_ylabel("SingleCore (Mpps)")
     ax.set_title("Stride processing: IMC Univ2, 1 core, 0 churn")
 
     ax.set_ylim(0, 35)

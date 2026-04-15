@@ -17,7 +17,6 @@ class NF:
         hostname: str,
         repo: str,
         pcie_devs: list[str],
-        nb_cores: int = 1,
         log_file: Optional[Path] = None,
         track_stride_sizes: bool = False,
     ) -> None:
@@ -25,7 +24,6 @@ class NF:
         self.base_dir = Path(repo) / "nfs"
         self.exe = self.base_dir / "build" / "release" / "bin" / name
         self.pcie_devs = pcie_devs
-        self.nb_cores = nb_cores
         self.track_stride_sizes = track_stride_sizes
         self._stride_output: str = ""
 
@@ -72,12 +70,15 @@ class NF:
             return []
         return [counts.get(i, 0) for i in range(1, max(counts) + 1)]
 
-    def launch(self) -> None:
+    def launch(
+        self,
+        nb_cores: int = 1,
+    ) -> None:
         assert not self.active
 
         self.kill()
 
-        remote_cmd = f"source {self.setup_env_script} && sudo -E {str(self.exe)} {self.dpdk_config}"
+        remote_cmd = f"source {self.setup_env_script} && sudo -E {str(self.exe)} {self.get_dpdk_config(nb_cores)}"
 
         self.cmd = self.host.run_command(remote_cmd, pty=True)
         self.active = True
@@ -112,18 +113,17 @@ class NF:
 
         return output
 
-    @property
-    def dpdk_config(self):
-        if hasattr(self, "_dpdk_config"):
-            return self._dpdk_config
-
+    def get_dpdk_config(
+        self,
+        nb_cores: int,
+    ) -> DpdkConfig:
         for pcie_dev in self.pcie_devs:
             self.host.validate_pcie_dev(pcie_dev)
 
         all_cores = self.host.get_all_cpus()
         all_cores = set().union(*(self.host.get_pcie_dev_cpus(pcie_dev) for pcie_dev in self.pcie_devs))
 
-        cores = list(itertools.islice(all_cores, self.nb_cores))
+        cores = list(itertools.islice(all_cores, nb_cores))
 
         dpdk_config = DpdkConfig(
             cores=cores,
@@ -131,8 +131,7 @@ class NF:
             pci_allow_list=self.pcie_devs,
         )
 
-        self._dpdk_config = dpdk_config
-        return self._dpdk_config
+        return dpdk_config
 
     def __del__(self) -> None:
         try:
