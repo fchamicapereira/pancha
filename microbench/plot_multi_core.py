@@ -16,9 +16,7 @@ DATA_DIR = SCRIPT_DIR / ".." / "experiments" / "data"
 # FIG_FORMAT = "pdf"
 FIG_FORMAT = "png"
 
-_CSV_PATTERN = re.compile(
-    r"^(.+)-multi-core-((?:nop|fw|telemetry)(?:_batch_(?:greedy|lazy|sorted))?_multicore)(?:-lbatch(\d+))?\.csv$"
-)
+_CSV_PATTERN = re.compile(r"^(.+)-multi-core-((?:nop|fw|telemetry)(?:_batch_(?:greedy|lazy|sorted))?_multicore)(?:-lbatch(\d+))?\.csv$")
 
 _TECHNIQUE_LINESTYLES = {
     "baseline": "-",
@@ -89,16 +87,14 @@ def parse_csv_files(data_dir: Path) -> dict:
 def plot_scaling(data: dict, metric: str = "mpps"):
     """One line plot per (pcap, lbatch): throughput vs nb_cores, one line per NF+technique."""
     assert metric in ("mpps", "mbps")
-    ylabel = "MultiCore (Mpps)" if metric == "mpps" else "MultiCore (Mbps)"
+    ylabel = "Throughput (Mpps)" if metric == "mpps" else "Throughput (Mbps)"
 
     for pcap, pcap_data in sorted(data.items()):
         all_lbatches = sorted(
             {lb for nf_data in pcap_data.values() for lb in nf_data},
             key=lambda v: (v is not None, v),
         )
-        all_nb_cores = sorted(
-            {nc for nf_data in pcap_data.values() for lb_data in nf_data.values() for nc in lb_data}
-        )
+        all_nb_cores = sorted({nc for nf_data in pcap_data.values() for lb_data in nf_data.values() for nc in lb_data})
 
         for lbatch in all_lbatches:
             _, ax = plt.subplots(figsize=(10, 6))
@@ -133,14 +129,14 @@ def plot_scaling(data: dict, metric: str = "mpps"):
             ax.set_ylabel(ylabel)
             lbatch_label = "" if lbatch is None else f" — logical batch size {lbatch}"
             ax.set_title(f"{pcap} — multi-core scaling{lbatch_label}")
-            ax.legend(loc="upper left")
+            ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1), borderaxespad=0.0)
             ax.grid(True, linestyle="--", alpha=0.5)
 
             plt.tight_layout()
             lbatch_suffix = "no_lbatch" if lbatch is None else f"lbatch{lbatch}"
             out_file = OUT_DIR / f"{pcap}_multi_core_{lbatch_suffix}.{FIG_FORMAT}"
             print(f"Plotting to {out_file}...")
-            plt.savefig(out_file, dpi=300)
+            plt.savefig(out_file, dpi=300, bbox_inches="tight")
             plt.close()
 
 
@@ -154,9 +150,7 @@ def plot_efficiency(data: dict, metric: str = "mpps"):
             {lb for nf_data in pcap_data.values() for lb in nf_data},
             key=lambda v: (v is not None, v),
         )
-        all_nb_cores = sorted(
-            {nc for nf_data in pcap_data.values() for lb_data in nf_data.values() for nc in lb_data}
-        )
+        all_nb_cores = sorted({nc for nf_data in pcap_data.values() for lb_data in nf_data.values() for nc in lb_data})
 
         for lbatch in all_lbatches:
             _, ax = plt.subplots(figsize=(10, 6))
@@ -184,14 +178,14 @@ def plot_efficiency(data: dict, metric: str = "mpps"):
             ax.set_ylabel(ylabel)
             lbatch_label = "" if lbatch is None else f" — logical batch size {lbatch}"
             ax.set_title(f"{pcap} — multi-core efficiency{lbatch_label}")
-            ax.legend(loc="upper right")
+            ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1), borderaxespad=0.0)
             ax.grid(True, linestyle="--", alpha=0.5)
 
             plt.tight_layout()
             lbatch_suffix = "no_lbatch" if lbatch is None else f"lbatch{lbatch}"
             out_file = OUT_DIR / f"{pcap}_multi_core_efficiency_{lbatch_suffix}.{FIG_FORMAT}"
             print(f"Plotting to {out_file}...")
-            plt.savefig(out_file, dpi=300)
+            plt.savefig(out_file, dpi=300, bbox_inches="tight")
             plt.close()
 
 
